@@ -7,6 +7,7 @@ type Film = { id: number; title: string; genre: string; blurb: string; tint: str
 type Recommendation = { id: number; title: string; rating: number; count: number; score: number; reason: string; reasonType: "item" | "users" | "popular"; because?: string };
 type CatalogMovie = { movieId: number; sourceTitle: string; posterUrl: string | null; overview: string; genres: string[]; year?: string };
 type MovieView = { id: number; title: string; genre: string; blurb: string; tint: string; reason?: string; communityRating?: number; count?: number };
+type AppView = "discover" | "ratings" | "recommendations";
 
 const genres = ["Acción", "Ciencia ficción", "Drama", "Thriller", "Comedia", "Animación", "Romance", "Clásicos"];
 const films: Film[] = [
@@ -77,8 +78,9 @@ export default function Home() {
   const [selectedMovie, setSelectedMovie] = useState<MovieView | null>(null);
   const [catalog, setCatalog] = useState<Record<number, CatalogMovie>>({});
   const catalogRef = useRef<Record<number, CatalogMovie>>({});
+  const restoreAttempted = useRef(false);
   const [currentCard, setCurrentCard] = useState(0);
-  const [onboardingStep, setOnboardingStep] = useState<"genres" | "ratings">("genres");
+  const [activeView, setActiveView] = useState<AppView>("discover");
   const [hasDiscovered, setHasDiscovered] = useState(false);
   const [cardMotion, setCardMotion] = useState<"left" | "right" | null>(null);
 
@@ -88,13 +90,21 @@ export default function Home() {
       if (!active) return;
       try {
         const saved = window.localStorage.getItem("cinematch-ratings");
-        if (saved) setRatings(JSON.parse(saved) as Record<number, number>);
+        const savedRatings = saved ? JSON.parse(saved) as Record<number, number> : {};
+        const savedGenres = window.localStorage.getItem("cinematch-genres");
+        const savedView = window.localStorage.getItem("cinematch-view") as AppView | null;
+        setRatings(savedRatings);
+        if (savedGenres) setSelectedGenres(JSON.parse(savedGenres) as string[]);
+        if (savedView && ["discover", "ratings", "recommendations"].includes(savedView)) setActiveView(savedView);
+        else if (Object.keys(savedRatings).length >= 5) setActiveView("recommendations");
       } catch { window.localStorage.removeItem("cinematch-ratings"); }
       finally { setStorageReady(true); }
     });
     return () => { active = false; };
   }, []);
   useEffect(() => { if (storageReady) window.localStorage.setItem("cinematch-ratings", JSON.stringify(ratings)); }, [ratings, storageReady]);
+  useEffect(() => { if (storageReady) window.localStorage.setItem("cinematch-genres", JSON.stringify(selectedGenres)); }, [selectedGenres, storageReady]);
+  useEffect(() => { if (storageReady) window.localStorage.setItem("cinematch-view", activeView); }, [activeView, storageReady]);
   useEffect(() => {
     if (!selectedMovie) return;
     const close = (event: KeyboardEvent) => { if (event.key === "Escape") setSelectedMovie(null); };
@@ -123,7 +133,7 @@ export default function Home() {
   }, []);
   useEffect(() => { void loadCatalog(films.map((film) => film.id)); }, [loadCatalog]);
 
-  const discover = useCallback(async (nextRatings: Record<number, number>) => {
+  const discover = useCallback(async (nextRatings: Record<number, number>, navigateToResults = false) => {
     const payload = Object.entries(nextRatings).map(([movieId, rating]) => ({ movieId: Number(movieId), rating }));
     if (payload.length < 5) return;
     setLoading(true); setError("");
@@ -133,6 +143,7 @@ export default function Home() {
       if (!response.ok) throw new Error(result.error || "No hemos podido actualizar tu selección.");
       const nextRecommendations = result.hybrid ?? [];
       setRecommendations(nextRecommendations); setHasDiscovered(true);
+      if (navigateToResults) setActiveView("recommendations");
       void loadCatalog(nextRecommendations.map((movie) => movie.id));
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "No hemos podido actualizar tu selección."); }
     finally { setLoading(false); }
@@ -142,6 +153,11 @@ export default function Home() {
     const timer = window.setTimeout(() => { void discover(ratings); }, 450);
     return () => window.clearTimeout(timer);
   }, [ratings, hasDiscovered, discover]);
+  useEffect(() => {
+    if (!storageReady || activeView !== "recommendations" || rated.length < 5 || recommendations.length || restoreAttempted.current) return;
+    restoreAttempted.current = true;
+    void discover(ratings);
+  }, [storageReady, activeView, rated.length, recommendations.length, discover, ratings]);
 
   const rate = (id: number, value: number) => setRatings((current) => ({ ...current, [id]: value }));
   function advance(direction: "left" | "right") {
@@ -154,10 +170,10 @@ export default function Home() {
     return { id: movie.id, title: cleanTitle(movie.title), genre: catalog[movie.id]?.genres.join(" · ") || "Selección CineMatch", blurb: catalog[movie.id]?.overview || "Una recomendación encontrada al cruzar tus valoraciones con los patrones de la comunidad MovieLens.", tint: fallbackTints[movie.id % fallbackTints.length], reason: movie.reason, communityRating: movie.rating, count: movie.count };
   }
 
-  return <main className="min-h-screen overflow-x-hidden bg-[#080812] text-[#f7f1e7]">
-    <Navigation ratedCount={rated.length} hasDiscovered={hasDiscovered} />
-    {!hasDiscovered && onboardingStep === "genres" && <GenreIntro selectedGenres={selectedGenres} onToggle={(genre) => setSelectedGenres((current) => current.includes(genre) ? current.filter((item) => item !== genre) : [...current, genre])} onContinue={() => setOnboardingStep("ratings")} />}
-    {!hasDiscovered && onboardingStep === "ratings" && <section className="relative min-h-screen px-5 pb-12 pt-24 sm:px-8 sm:pt-28">
+  return <main className="min-h-screen overflow-x-hidden bg-[#080812] pb-16 text-[#f7f1e7] sm:pb-0">
+    <Navigation ratedCount={rated.length} activeView={activeView} canViewRecommendations={rated.length >= 5} onNavigate={setActiveView} />
+    {activeView === "discover" && <GenreIntro selectedGenres={selectedGenres} onToggle={(genre) => setSelectedGenres((current) => current.includes(genre) ? current.filter((item) => item !== genre) : [...current, genre])} onContinue={() => setActiveView("ratings")} />}
+    {activeView === "ratings" && <section className="relative min-h-screen px-5 pb-12 pt-24 sm:px-8 sm:pt-28">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_28%,rgba(97,74,180,.22),transparent_34%),linear-gradient(180deg,#080812_0%,#0c0c19_58%,#080812_100%)]" />
       <div className="relative mx-auto max-w-6xl">
         <div className="mx-auto max-w-2xl text-center"><p className="eyebrow">Tu primera selección</p><h1 className="mt-3 text-3xl font-semibold tracking-[-.04em] sm:text-5xl">Una película. Una impresión.</h1><p className="mx-auto mt-3 hidden max-w-xl text-sm leading-6 text-white/55 sm:block sm:text-base">Puntúa solo las que conozcas. Cada gesto afina tu perfil y cambia lo que viene después.</p></div>
@@ -173,21 +189,27 @@ export default function Home() {
           <div className="mx-auto w-full max-w-md lg:mx-0">
             <div className="flex items-end justify-between gap-5"><div><p className="eyebrow">Construyendo tu perfil</p><p className="mt-2 text-lg font-medium">{rated.length < 5 ? `${rated.length} de 5 valoraciones` : "Tu perfil ya está listo"}</p></div><span className="text-sm tabular-nums text-white/40">{currentCard % visibleFilms.length + 1} / {visibleFilms.length}</span></div>
             <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-[#8170df] to-[#e8c77a] transition-[width] duration-500" style={{ width: `${progress}%` }} /></div>
-            <div className="mt-4 rounded-2xl border border-white/10 bg-white/[.045] p-4 sm:mt-8 sm:p-6"><p className="text-center text-sm text-white/55">¿Qué te pareció?</p><div className="mt-2 flex justify-center sm:mt-3"><RatingStars value={ratings[tinderFilm.id]} onRate={rateAndAdvance} large /></div><div className="mt-3 grid grid-cols-2 gap-3 sm:mt-5"><button type="button" onClick={() => advance("left")} className="secondary-action"><Icon name="skip" className="h-5 w-5" /> No la he visto</button><button type="button" onClick={() => setSelectedMovie(tinderFilm)} className="secondary-action"><Icon name="info" className="h-5 w-5" /> Ver ficha</button></div></div>
-            {rated.length >= 5 ? <button type="button" disabled={loading} onClick={() => void discover(ratings)} className="primary-action mt-5 w-full">{loading ? "Buscando afinidades…" : <><Icon name="spark" className="h-5 w-5" /> Revelar mis recomendaciones</>}</button> : <p className="mt-5 text-center text-xs leading-5 text-white/40">Te faltan {5 - rated.length} valoraciones. Puedes pasar todas las películas que no conozcas.</p>}
+            <div className="mt-4 rounded-2xl border border-white/10 bg-white/[.045] p-4 sm:mt-8 sm:p-6"><p className="text-center text-sm text-white/55">¿Qué te pareció?</p><div className="mt-2 flex justify-center sm:mt-3"><RatingStars value={ratings[tinderFilm.id]} onRate={rateAndAdvance} large /></div><div className="mt-3 grid grid-cols-2 gap-3 sm:mt-5"><button type="button" onClick={() => advance("left")} className="secondary-action"><Icon name="skip" className="h-5 w-5" /> {ratings[tinderFilm.id] ? "Siguiente película" : "No la he visto"}</button><button type="button" onClick={() => setSelectedMovie(tinderFilm)} className="secondary-action"><Icon name="info" className="h-5 w-5" /> Ver ficha</button></div></div>
+            {rated.length >= 5 ? <button type="button" disabled={loading} onClick={() => void discover(ratings, true)} className="primary-action mt-5 w-full">{loading ? "Buscando afinidades…" : <><Icon name="spark" className="h-5 w-5" /> Revelar mis recomendaciones</>}</button> : <p className="mt-5 text-center text-xs leading-5 text-white/40">Te faltan {5 - rated.length} valoraciones. Puedes pasar todas las películas que no conozcas.</p>}
             {error && <p role="alert" className="mt-4 text-center text-sm text-rose-300">{error}</p>}
-            <button type="button" onClick={() => setOnboardingStep("genres")} className="mx-auto mt-5 block text-xs text-white/35 underline-offset-4 hover:text-white hover:underline">Cambiar géneros</button>
+            <button type="button" onClick={() => setActiveView("discover")} className="mx-auto mt-5 block text-xs text-white/35 underline-offset-4 hover:text-white hover:underline">Cambiar géneros</button>
           </div>
         </div>
       </div>
     </section>}
-    {hasDiscovered && <RecommendationsView recommendations={recommendations} catalog={catalog} ratings={ratings} loading={loading} error={error} onRefresh={() => void discover(ratings)} onOpen={(movie) => setSelectedMovie(viewForRecommendation(movie))} onRate={rate} />}
+    {activeView === "recommendations" && <RecommendationsView recommendations={recommendations} catalog={catalog} ratings={ratings} loading={loading} error={error} onRefresh={() => void discover(ratings)} onOpen={(movie) => setSelectedMovie(viewForRecommendation(movie))} onRate={rate} />}
     {selectedMovie && <MovieModal movie={selectedMovie} metadata={catalog[selectedMovie.id]} rating={ratings[selectedMovie.id]} onRate={(value) => rate(selectedMovie.id, value)} onClose={() => setSelectedMovie(null)} />}
   </main>;
 }
 
-function Navigation({ ratedCount, hasDiscovered }: { ratedCount: number; hasDiscovered: boolean }) {
-  return <nav className="fixed inset-x-0 top-0 z-40 border-b border-white/[.06] bg-[#080812]/75 backdrop-blur-xl"><div className="mx-auto flex h-16 max-w-[1500px] items-center justify-between px-5 sm:h-18 sm:px-8 lg:px-12"><button type="button" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} className="text-xl font-black tracking-[-.09em] text-[#b3a6ff] sm:text-2xl">CINEMATCH</button><div className="flex items-center gap-3 sm:gap-6">{hasDiscovered && <button type="button" onClick={() => window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" })} className="hidden text-sm text-white/55 transition hover:text-white sm:block">Seguir afinando</button>}<div className="flex items-center gap-2 rounded-full border border-white/12 bg-white/[.06] px-3 py-1.5 text-[11px] text-white/65 sm:text-xs"><span className={`h-1.5 w-1.5 rounded-full ${ratedCount >= 5 ? "bg-[#e8c77a] shadow-[0_0_10px_#e8c77a]" : "bg-[#8f7de8]"}`} /><span className="tabular-nums">{ratedCount}</span><span className="hidden sm:inline"> valoradas</span></div></div></div></nav>;
+function Navigation({ ratedCount, activeView, canViewRecommendations, onNavigate }: { ratedCount: number; activeView: AppView; canViewRecommendations: boolean; onNavigate: (view: AppView) => void }) {
+  const items: Array<{ view: AppView; label: string }> = [{ view: "discover", label: "Descubrir" }, { view: "ratings", label: "Valorar" }, { view: "recommendations", label: "Para ti" }];
+  const tabs = (mobile = false) => items.map(({ view, label }) => {
+    const disabled = view === "recommendations" && !canViewRecommendations;
+    const active = activeView === view;
+    return <button key={view} type="button" disabled={disabled} title={disabled ? "Valora al menos 5 películas para acceder" : undefined} onClick={() => onNavigate(view)} className={`${mobile ? "flex-1 py-3 text-xs" : "px-3 py-2 text-sm"} relative font-medium transition ${active ? "text-white" : "text-white/42 hover:text-white/75"} disabled:cursor-not-allowed disabled:opacity-25`}><span>{label}</span>{active && <span className={`absolute bg-[#a99bff] ${mobile ? "inset-x-5 top-0 h-0.5" : "inset-x-3 -bottom-[13px] h-0.5"}`} />}</button>;
+  });
+  return <><nav className="fixed inset-x-0 top-0 z-40 border-b border-white/[.06] bg-[#080812]/75 backdrop-blur-xl"><div className="mx-auto grid h-16 max-w-[1500px] grid-cols-[1fr_auto] items-center px-5 sm:h-18 sm:grid-cols-[1fr_auto_1fr] sm:px-8 lg:px-12"><button type="button" onClick={() => onNavigate("discover")} className="justify-self-start text-xl font-black tracking-[-.09em] text-[#b3a6ff] sm:text-2xl">CINEMATCH</button><div className="hidden items-center gap-2 sm:flex">{tabs()}</div><div className="flex items-center gap-2 justify-self-end rounded-full border border-white/12 bg-white/[.06] px-3 py-1.5 text-[11px] text-white/65 sm:text-xs"><span className={`h-1.5 w-1.5 rounded-full ${ratedCount >= 5 ? "bg-[#e8c77a] shadow-[0_0_10px_#e8c77a]" : "bg-[#8f7de8]"}`} /><span className="tabular-nums">{ratedCount}</span><span className="hidden lg:inline"> valoradas</span></div></div></nav><nav aria-label="Navegación principal" className="fixed inset-x-0 bottom-0 z-40 flex border-t border-white/10 bg-[#0d0d18]/95 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl sm:hidden">{tabs(true)}</nav></>;
 }
 
 function GenreIntro({ selectedGenres, onToggle, onContinue }: { selectedGenres: string[]; onToggle: (genre: string) => void; onContinue: () => void }) {
