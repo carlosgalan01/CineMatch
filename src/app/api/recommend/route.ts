@@ -3,6 +3,7 @@ import data from "@/data/movielens.json";
 type Rating = { movieId: number; rating: number };
 type Movie = { id: number; title: string; rating: number; count: number };
 type Source = "item" | "users" | "popular";
+type SignalDetail = { rank: number; weight: number; rankFactor: number; contribution: number };
 
 const movieTitles = new Map<number, string>(data.movies as Array<[number, string]>);
 const userRatings = new Map<number, Map<number, number>>();
@@ -112,12 +113,14 @@ export async function POST(request: Request) {
   const userResult = userBased(ratings, excluded);
   const users = userResult.movies;
   const becauseByMovie = new Map(item.map((movie) => [movie.id, movie.because]));
-  const blend = new Map<number, { score: number; contributions: Partial<Record<Source, number>> }>();
+  const blend = new Map<number, { score: number; contributions: Partial<Record<Source, number>>; details: Partial<Record<Source, SignalDetail>> }>();
   const add = (rows: Array<Movie & { score: number }>, weight: number, source: Source) => rows.slice(0, 20).forEach((row, index) => {
-    const current = blend.get(row.id) ?? { score: 0, contributions: {} };
-    const contribution = weight * ((21 - index) / 20);
+    const current = blend.get(row.id) ?? { score: 0, contributions: {}, details: {} };
+    const rankFactor = (20 - index) / 20;
+    const contribution = weight * rankFactor;
     current.score += contribution;
     current.contributions[source] = (current.contributions[source] ?? 0) + contribution;
+    current.details[source] = { rank: index + 1, weight, rankFactor, contribution };
     blend.set(row.id, current);
   });
   add(popular, ratings.length < 5 ? 0.45 : 0.1, "popular");
@@ -135,7 +138,7 @@ export async function POST(request: Request) {
       item: +(value.contributions.item ?? 0).toFixed(3),
       users: +(value.contributions.users ?? 0).toFixed(3),
     };
-    return { ...toMovie(id), score: +value.score.toFixed(3), reason, reasonType, because, signals };
+    return { ...toMovie(id), score: +value.score.toFixed(3), reason, reasonType, because, signals, signalDetails: value.details };
   })
     .sort((a, b) => b.score - a.score).slice(0, 40);
   return Response.json({ hybrid, item, users, popular, diagnostics: { ratings: ratings.length, neighbours: userResult.neighbourCount } });
