@@ -32,19 +32,19 @@ button:disabled { cursor: not-allowed; }
 .card-enter { animation: card-enter .38s cubic-bezier(.2,.75,.25,1) both; }
 .card-exit-left { animation: card-exit-left .28s ease-in both; }
 .card-exit-right { animation: card-exit-right .28s ease-in both; }
-.reward-confirmation { animation: reward-confirmation 1.1s ease both; }
-.reward-core { animation: reward-core .55s cubic-bezier(.2,1.35,.35,1) both; }
-.reward-ring { animation: reward-ring .75s ease-out both; }
-.reward-score { animation: reward-score .4s .18s cubic-bezier(.2,1.4,.35,1) both; }
+.reward-confirmation { animation: reward-confirmation 1.8s ease both; }
+.reward-star { animation: reward-star .55s cubic-bezier(.2,1.35,.35,1) both; }
+.reward-star:nth-child(2) { animation-delay: 60ms; }
+.reward-star:nth-child(3) { animation-delay: 120ms; }
+.reward-star:nth-child(4) { animation-delay: 180ms; }
+.reward-star:nth-child(5) { animation-delay: 240ms; }
 .reward-spark { animation: reward-spark .65s ease-out both; }
 
 @keyframes card-enter { from { opacity: 0; transform: translateY(14px) scale(.97) rotate(-1deg); } to { opacity: 1; transform: translateY(0) scale(1) rotate(0); } }
 @keyframes card-exit-left { to { opacity: 0; transform: translateX(-28%) rotate(-6deg) scale(.96); } }
 @keyframes card-exit-right { to { opacity: 0; transform: translateX(28%) rotate(6deg) scale(.96); } }
-@keyframes reward-confirmation { 0% { opacity: 0; } 12%, 75% { opacity: 1; } 100% { opacity: 0; } }
-@keyframes reward-core { from { opacity: 0; transform: scale(.35) rotate(-12deg); } to { opacity: 1; transform: scale(1) rotate(0); } }
-@keyframes reward-ring { from { opacity: .8; transform: scale(.4); } to { opacity: 0; transform: scale(1.8); } }
-@keyframes reward-score { from { opacity: 0; transform: translateY(8px) scale(.7); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes reward-confirmation { 0% { opacity: 0; transform: scale(.97); } 12%, 82% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1.015); } }
+@keyframes reward-star { from { opacity: 0; transform: translateY(14px) scale(.35) rotate(-18deg); } to { opacity: 1; transform: translateY(0) scale(1) rotate(0); } }
 @keyframes reward-spark { 0% { opacity: 0; transform: scale(.3) rotate(0); } 35% { opacity: 1; transform: scale(1.35) rotate(25deg); } 100% { opacity: 0; transform: scale(.65) rotate(55deg); } }
 
 @media (prefers-reduced-motion: reduce) {
