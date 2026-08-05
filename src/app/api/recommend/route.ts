@@ -2,6 +2,7 @@ import data from "@/data/movielens.json";
 
 type Rating = { movieId: number; rating: number };
 type Movie = { id: number; title: string; rating: number; count: number };
+type Source = "item" | "users" | "popular";
 
 const movieTitles = new Map<number, string>(data.movies as Array<[number, string]>);
 const userRatings = new Map<number, Map<number, number>>();
@@ -57,15 +58,16 @@ function userBased(ratings: Rating[], excluded: Set<number>) {
       scores.set(movieId, row);
     }
   }
-  return [...scores.entries()]
+  const movies = [...scores.entries()]
     .filter(([, value]) => value.support >= 2)
     .map(([id, value]) => ({ ...toMovie(id), score: value.sum / value.weight, support: value.support }))
     .sort((a, b) => b.score - a.score)
     .slice(0, 40);
+  return { movies, neighbourCount: top.length };
 }
 
 function itemBased(ratings: Rating[], excluded: Set<number>) {
-  const scores = new Map<number, { weighted: number; weight: number; support: number; because: number }>();
+  const scores = new Map<number, { weighted: number; weight: number; support: number; because: number | null }>();
   for (const { movieId: seed, rating: seedRating } of ratings) {
     const seedUsers = itemRatings.get(seed) ?? [];
     const seedNorm = Math.sqrt(seedUsers.reduce((total, [, value]) => total + value ** 2, 0));
@@ -81,7 +83,7 @@ function itemBased(ratings: Rating[], excluded: Set<number>) {
     for (const [candidate, dot] of dots) {
       const similarity = dot / (seedNorm * Math.sqrt(norms.get(candidate) ?? 1));
       if (similarity < 0.35) continue;
-      const row = scores.get(candidate) ?? { weighted: 0, weight: 0, support: 0, because: seed };
+      const row = scores.get(candidate) ?? { weighted: 0, weight: 0, support: 0, because: null };
       row.weighted += similarity * seedRating; row.weight += similarity; row.support++;
       if (seedRating >= 4) row.because = seed;
       scores.set(candidate, row);
@@ -89,7 +91,7 @@ function itemBased(ratings: Rating[], excluded: Set<number>) {
   }
   return [...scores.entries()]
     .filter(([id, value]) => (stats.get(id)?.count ?? 0) >= 15 && value.support >= 1)
-    .map(([id, value]) => ({ ...toMovie(id), score: value.weighted / value.weight, support: value.support, because: movieTitles.get(value.because) }))
+    .map(([id, value]) => ({ ...toMovie(id), score: value.weighted / value.weight, support: value.support, because: value.because ? movieTitles.get(value.because) : undefined }))
     .sort((a, b) => b.score - a.score)
     .slice(0, 40);
 }
@@ -101,16 +103,28 @@ export async function POST(request: Request) {
   const excluded = new Set(ratings.map((r) => r.movieId));
   const popular = popularity(excluded);
   const item = itemBased(ratings, excluded);
-  const users = userBased(ratings, excluded);
-  const blend = new Map<number, { score: number; sources: string[] }>();
-  const add = (rows: Array<Movie & { score: number }>, weight: number, source: string) => rows.slice(0, 20).forEach((row, index) => {
-    const current = blend.get(row.id) ?? { score: 0, sources: [] };
-    current.score += weight * ((21 - index) / 20); current.sources.push(source); blend.set(row.id, current);
+  const userResult = userBased(ratings, excluded);
+  const users = userResult.movies;
+  const becauseByMovie = new Map(item.map((movie) => [movie.id, movie.because]));
+  const blend = new Map<number, { score: number; contributions: Partial<Record<Source, number>> }>();
+  const add = (rows: Array<Movie & { score: number }>, weight: number, source: Source) => rows.slice(0, 20).forEach((row, index) => {
+    const current = blend.get(row.id) ?? { score: 0, contributions: {} };
+    const contribution = weight * ((21 - index) / 20);
+    current.score += contribution;
+    current.contributions[source] = (current.contributions[source] ?? 0) + contribution;
+    blend.set(row.id, current);
   });
   add(popular, ratings.length < 5 ? 0.45 : 0.1, "popular");
-  add(item, ratings.length < 5 ? 0.4 : 0.55, "similar films");
-  add(users, ratings.length < 5 ? 0.15 : 0.35, "similar viewers");
-  const hybrid = [...blend.entries()].map(([id, value]) => ({ ...toMovie(id), score: +value.score.toFixed(3), reason: value.sources.includes("similar films") ? "Because of films you rated" : "Popular with the community" }))
+  add(item, ratings.length < 5 ? 0.4 : 0.55, "item");
+  add(users, ratings.length < 5 ? 0.15 : 0.35, "users");
+  const hybrid = [...blend.entries()].map(([id, value]) => {
+    const reasonType = (Object.entries(value.contributions).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "popular") as Source;
+    const because = becauseByMovie.get(id)?.replace(/\s*\(\d{4}\)$/, "");
+    const reason = reasonType === "item"
+      ? because ? `Porque te gustó ${because}` : "Parecida a películas que valoraste"
+      : reasonType === "users" ? "Usuarios con gustos similares" : "Favorita de la comunidad";
+    return { ...toMovie(id), score: +value.score.toFixed(3), reason, reasonType, because };
+  })
     .sort((a, b) => b.score - a.score).slice(0, 40);
-  return Response.json({ hybrid, item, users, popular, diagnostics: { ratings: ratings.length, neighbours: Math.min(25, userBased(ratings, excluded).length) } });
+  return Response.json({ hybrid, item, users, popular, diagnostics: { ratings: ratings.length, neighbours: userResult.neighbourCount } });
 }

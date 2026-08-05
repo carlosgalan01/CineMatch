@@ -13,14 +13,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CineMatch — Recomendaciones de cine",
-  description: "Un motor híbrido de recomendación de películas.",
+  title: "CineMatch — Tu próxima gran película",
+  description: "Recomendaciones de cine personalizadas con un motor híbrido basado en MovieLens.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
-      lang="en"
+      lang="es"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>
