@@ -9,6 +9,12 @@ const userRatings = new Map<number, Map<number, number>>();
 const itemRatings = new Map<number, Array<[number, number]>>();
 const stats = new Map<number, { sum: number; count: number }>();
 
+function displayTitle(title: string) {
+  const withoutYear = title.replace(/\s*\(\d{4}\)$/, "");
+  const article = withoutYear.match(/^(.*), (The|A|An)$/);
+  return article ? `${article[2]} ${article[1]}` : withoutYear;
+}
+
 for (const [userId, movieId, rating] of data.ratings) {
   if (!userRatings.has(userId)) userRatings.set(userId, new Map());
   userRatings.get(userId)!.set(movieId, rating);
@@ -119,7 +125,8 @@ export async function POST(request: Request) {
   add(users, ratings.length < 5 ? 0.15 : 0.35, "users");
   const hybrid = [...blend.entries()].map(([id, value]) => {
     const reasonType = (Object.entries(value.contributions).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "popular") as Source;
-    const because = becauseByMovie.get(id)?.replace(/\s*\(\d{4}\)$/, "");
+    const sourceTitle = becauseByMovie.get(id);
+    const because = sourceTitle ? displayTitle(sourceTitle) : undefined;
     const reason = reasonType === "item"
       ? because ? `Porque te gustó ${because}` : "Parecida a películas que valoraste"
       : reasonType === "users" ? "Usuarios con gustos similares" : "Favorita de la comunidad";

@@ -5,6 +5,7 @@ type TmdbMovie = {
   title: string;
   original_title?: string;
   poster_path: string | null;
+  backdrop_path: string | null;
   overview: string;
   genre_ids: number[];
   release_date: string;
@@ -58,6 +59,7 @@ export async function GET(request: Request) {
         sourceTitle,
         tmdbId: match?.id ?? null,
         posterUrl: match?.poster_path ? `https://image.tmdb.org/t/p/w500${match.poster_path}` : null,
+        backdropUrl: match?.backdrop_path ? `https://image.tmdb.org/t/p/w1280${match.backdrop_path}` : null,
         overview: match?.overview ?? "",
         genres: (match?.genre_ids ?? []).map((id) => genreNames[id]).filter(Boolean),
         year: match?.release_date?.slice(0, 4) ?? year ?? "",
