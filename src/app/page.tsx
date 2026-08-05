@@ -168,6 +168,8 @@ export default function Home() {
   const [profiles, setProfiles] = useState<LocalProfile[]>([]);
   const [activeProfile, setActiveProfile] = useState<LocalProfile | null>(null);
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
+  const [ratedConfirmation, setRatedConfirmation] = useState<{ title: string; rating: number } | null>(null);
+  const confirmationTimer = useRef<number | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -205,6 +207,7 @@ export default function Home() {
     document.body.style.overflow = "hidden";
     return () => { document.removeEventListener("keydown", close); document.body.style.overflow = ""; };
   }, [selectedMovie]);
+  useEffect(() => () => { if (confirmationTimer.current) window.clearTimeout(confirmationTimer.current); }, []);
 
   const rated = useMemo(() => Object.entries(ratings).map(([movieId, rating]) => ({ movieId: Number(movieId), rating })), [ratings]);
   const visibleFilms = useMemo(() => [
@@ -262,8 +265,8 @@ export default function Home() {
   }
   function rateAndAdvance(value: number) {
     if (!tinderFilm || ratingFeedback) return;
-    rate(tinderFilm.id, value); setRatingFeedback(value); setCardMotion("right");
-    window.setTimeout(() => { setCurrentCard((current) => current + 1); setCardMotion(null); setRatingFeedback(null); }, 1200);
+    rate(tinderFilm.id, value); setRatingFeedback(value);
+    window.setTimeout(() => { setRatingFeedback(null); advance("right"); }, 420);
   }
   function viewForRecommendation(movie: Recommendation): MovieView {
     return { id: movie.id, title: cleanTitle(movie.title), genre: catalog[movie.id]?.genres.join(" · ") || "Selección CineMatch", blurb: catalog[movie.id]?.overview || "Una recomendación encontrada al cruzar tus valoraciones con los patrones de la comunidad MovieLens.", tint: fallbackTints[movie.id % fallbackTints.length], reason: movie.reason, communityRating: movie.rating, count: movie.count };
@@ -289,6 +292,15 @@ export default function Home() {
     }
     setProfiles(nextProfiles); setActiveProfile(profile); setRatings(data.ratings); setSelectedGenres(data.genres); setActiveView(data.view); setCurrentCard(data.cardIndex);
     setRecommendations([]); setDiagnostics(null); setHasDiscovered(false); restoreAttempted.current = false; setProfileDialogOpen(false);
+  }
+  function rateSelectedMovie(value: number) {
+    if (!selectedMovie) return;
+    rate(selectedMovie.id, value);
+    if (activeView !== "recommendations") return;
+    setRatedConfirmation({ title: selectedMovie.title, rating: value });
+    setSelectedMovie(null);
+    if (confirmationTimer.current) window.clearTimeout(confirmationTimer.current);
+    confirmationTimer.current = window.setTimeout(() => setRatedConfirmation(null), 1800);
   }
 
   return <main className="min-h-screen overflow-x-hidden bg-[#080812] pb-16 text-[#f7f1e7] sm:pb-0">
@@ -320,7 +332,8 @@ export default function Home() {
     </section>}
     {activeView === "recommendations" && <RecommendationsView recommendations={recommendations} catalog={catalog} ratings={ratings} loading={loading} error={error} onRefresh={() => void discover(ratings)} onOpen={(movie) => setSelectedMovie(viewForRecommendation(movie))} onRate={rate} />}
     {activeView === "motor" && <MotorView ratedCount={rated.length} recommendations={recommendations} diagnostics={diagnostics} loading={loading} onCalculate={() => void discover(ratings)} />}
-    {selectedMovie && <MovieModal movie={selectedMovie} metadata={catalog[selectedMovie.id]} rating={ratings[selectedMovie.id]} onRate={(value) => rate(selectedMovie.id, value)} onClose={() => setSelectedMovie(null)} />}
+    {selectedMovie && <MovieModal movie={selectedMovie} metadata={catalog[selectedMovie.id]} rating={ratings[selectedMovie.id]} onRate={rateSelectedMovie} onClose={() => setSelectedMovie(null)} />}
+    {ratedConfirmation && <RatingConfirmation title={ratedConfirmation.title} rating={ratedConfirmation.rating} />}
     {storageReady && (!activeProfile || profileDialogOpen) && <ProfileDialog profiles={profiles} activeProfile={activeProfile} hasLegacyRatings={!activeProfile && rated.length > 0} onSelect={selectProfile} onCreate={createProfile} onClose={activeProfile ? () => setProfileDialogOpen(false) : undefined} />}
   </main>;
 }
@@ -405,6 +418,10 @@ function RecommendationCard({ movie, metadata, onOpen }: { movie: Recommendation
 
 function CompactFilmCard({ film, metadata, rating, onOpen, onRate }: { film: Film; metadata?: CatalogMovie; rating?: number; onOpen: () => void; onRate: (value: number) => void }) {
   return <article className="w-[62vw] max-w-[190px] shrink-0 snap-start"><button type="button" onClick={onOpen} className="group relative aspect-[2/3] w-full overflow-hidden rounded-xl border border-white/10 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b9adff]"><Poster movie={film} metadata={metadata} sizes="(max-width: 640px) 62vw, 190px" /><div className="absolute inset-0 bg-gradient-to-t from-[#080812] via-transparent to-transparent" /><h3 className="absolute inset-x-0 bottom-0 p-4 text-lg font-semibold leading-5 tracking-[-.03em]">{film.title}</h3></button><div className="mt-2"><RatingStars value={rating} onRate={onRate} /></div></article>;
+}
+
+function RatingConfirmation({ title, rating }: { title: string; rating: number }) {
+  return <div className="pointer-events-none fixed inset-0 z-[55] grid place-items-center bg-[#05050c]/72 p-5 backdrop-blur-md"><div className="recommendation-confirmation w-full max-w-sm rounded-3xl border border-[#e8c77a]/25 bg-[#12121f] p-8 text-center shadow-[0_35px_120px_rgba(0,0,0,.75)]"><div className="relative mx-auto grid h-20 w-20 place-items-center rounded-full border border-[#e8c77a]/35 bg-[radial-gradient(circle,rgba(232,199,122,.2),rgba(143,125,232,.08))] text-[#e8c77a] shadow-[0_0_45px_rgba(232,199,122,.18)]"><Icon name="check" className="h-8 w-8" /><span className="absolute -right-2 -top-1 rounded-full bg-[#e8c77a] px-2 py-1 text-xs font-black text-[#12121f]">{rating}★</span></div><p className="eyebrow mt-6">Perfil actualizado</p><h2 className="mt-3 text-2xl font-semibold tracking-[-.04em]">{title}</h2><p className="mt-3 text-sm leading-6 text-white/45">Valoración guardada. Tu selección se está reordenando con esta nueva señal.</p><div className="mx-auto mt-6 h-1 w-32 overflow-hidden rounded-full bg-white/8"><div className="confirmation-progress h-full rounded-full bg-gradient-to-r from-[#9f8cff] to-[#e8c77a]" /></div></div></div>;
 }
 
 function MovieModal({ movie, metadata, rating, onRate, onClose }: { movie: MovieView; metadata?: CatalogMovie; rating?: number; onRate: (value: number) => void; onClose: () => void }) {
