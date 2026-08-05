@@ -1,13 +1,15 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Film = { id: number; title: string; genre: string; blurb: string; tint: string };
 type Recommendation = { id: number; title: string; rating: number; count: number; score: number; reason: string; reasonType: "item" | "users" | "popular"; because?: string };
 type CatalogMovie = { movieId: number; sourceTitle: string; posterUrl: string | null; overview: string; genres: string[]; year?: string };
 type MovieView = { id: number; title: string; genre: string; blurb: string; tint: string; reason?: string; communityRating?: number; count?: number };
 type AppView = "discover" | "ratings" | "recommendations";
+type LocalProfile = { id: string; name: string };
+type ProfileData = { ratings: Record<number, number>; genres: string[]; view: AppView };
 
 const genres = ["Acción", "Ciencia ficción", "Drama", "Thriller", "Comedia", "Animación", "Romance", "Clásicos"];
 const films: Film[] = [
@@ -44,6 +46,25 @@ const films: Film[] = [
 const stars = [1, 2, 3, 4, 5];
 const fallbackTints = ["from-violet-700 via-indigo-950 to-[#080812]", "from-sky-700 via-slate-950 to-[#080812]", "from-amber-600 via-stone-950 to-[#080812]", "from-emerald-700 via-slate-950 to-[#080812]"];
 const cleanTitle = (title: string) => title.replace(/\s*\(\d{4}\)$/, "");
+const profileKey = (id: string, field: "ratings" | "genres" | "view") => `cinematch-profile:${id}:${field}`;
+
+function readProfileData(id: string): ProfileData {
+  try {
+    const ratings = JSON.parse(window.localStorage.getItem(profileKey(id, "ratings")) ?? "{}") as Record<number, number>;
+    const savedGenres = JSON.parse(window.localStorage.getItem(profileKey(id, "genres")) ?? "[]") as string[];
+    const savedView = window.localStorage.getItem(profileKey(id, "view")) as AppView | null;
+    const view = savedView && ["discover", "ratings", "recommendations"].includes(savedView) ? savedView : Object.keys(ratings).length >= 5 ? "recommendations" : "discover";
+    return { ratings, genres: savedGenres, view };
+  } catch {
+    return { ratings: {}, genres: [], view: "discover" };
+  }
+}
+
+function writeProfileData(id: string, data: ProfileData) {
+  window.localStorage.setItem(profileKey(id, "ratings"), JSON.stringify(data.ratings));
+  window.localStorage.setItem(profileKey(id, "genres"), JSON.stringify(data.genres));
+  window.localStorage.setItem(profileKey(id, "view"), data.view);
+}
 
 function Icon({ name, className = "h-5 w-5" }: { name: "arrow" | "check" | "close" | "info" | "skip" | "spark" | "star"; className?: string }) {
   const paths = {
@@ -83,28 +104,38 @@ export default function Home() {
   const [activeView, setActiveView] = useState<AppView>("discover");
   const [hasDiscovered, setHasDiscovered] = useState(false);
   const [cardMotion, setCardMotion] = useState<"left" | "right" | null>(null);
+  const [profiles, setProfiles] = useState<LocalProfile[]>([]);
+  const [activeProfile, setActiveProfile] = useState<LocalProfile | null>(null);
+  const [profileDialogOpen, setProfileDialogOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
     queueMicrotask(() => {
       if (!active) return;
       try {
-        const saved = window.localStorage.getItem("cinematch-ratings");
-        const savedRatings = saved ? JSON.parse(saved) as Record<number, number> : {};
-        const savedGenres = window.localStorage.getItem("cinematch-genres");
-        const savedView = window.localStorage.getItem("cinematch-view") as AppView | null;
-        setRatings(savedRatings);
-        if (savedGenres) setSelectedGenres(JSON.parse(savedGenres) as string[]);
-        if (savedView && ["discover", "ratings", "recommendations"].includes(savedView)) setActiveView(savedView);
-        else if (Object.keys(savedRatings).length >= 5) setActiveView("recommendations");
+        const savedProfiles = JSON.parse(window.localStorage.getItem("cinematch-profiles") ?? "[]") as LocalProfile[];
+        const activeId = window.localStorage.getItem("cinematch-active-profile");
+        const savedProfile = savedProfiles.find((profile) => profile.id === activeId) ?? null;
+        setProfiles(savedProfiles);
+        if (savedProfile) {
+          const data = readProfileData(savedProfile.id);
+          setActiveProfile(savedProfile); setRatings(data.ratings); setSelectedGenres(data.genres); setActiveView(data.view);
+        } else {
+          const legacyRatings = JSON.parse(window.localStorage.getItem("cinematch-ratings") ?? "{}") as Record<number, number>;
+          const legacyGenres = JSON.parse(window.localStorage.getItem("cinematch-genres") ?? "[]") as string[];
+          const legacyView = window.localStorage.getItem("cinematch-view") as AppView | null;
+          setRatings(legacyRatings); setSelectedGenres(legacyGenres);
+          if (legacyView && ["discover", "ratings", "recommendations"].includes(legacyView)) setActiveView(legacyView);
+          else if (Object.keys(legacyRatings).length >= 5) setActiveView("recommendations");
+        }
       } catch { window.localStorage.removeItem("cinematch-ratings"); }
       finally { setStorageReady(true); }
     });
     return () => { active = false; };
   }, []);
-  useEffect(() => { if (storageReady) window.localStorage.setItem("cinematch-ratings", JSON.stringify(ratings)); }, [ratings, storageReady]);
-  useEffect(() => { if (storageReady) window.localStorage.setItem("cinematch-genres", JSON.stringify(selectedGenres)); }, [selectedGenres, storageReady]);
-  useEffect(() => { if (storageReady) window.localStorage.setItem("cinematch-view", activeView); }, [activeView, storageReady]);
+  useEffect(() => { if (storageReady && activeProfile) window.localStorage.setItem(profileKey(activeProfile.id, "ratings"), JSON.stringify(ratings)); }, [ratings, storageReady, activeProfile]);
+  useEffect(() => { if (storageReady && activeProfile) window.localStorage.setItem(profileKey(activeProfile.id, "genres"), JSON.stringify(selectedGenres)); }, [selectedGenres, storageReady, activeProfile]);
+  useEffect(() => { if (storageReady && activeProfile) window.localStorage.setItem(profileKey(activeProfile.id, "view"), activeView); }, [activeView, storageReady, activeProfile]);
   useEffect(() => {
     if (!selectedMovie) return;
     const close = (event: KeyboardEvent) => { if (event.key === "Escape") setSelectedMovie(null); };
@@ -154,10 +185,10 @@ export default function Home() {
     return () => window.clearTimeout(timer);
   }, [ratings, hasDiscovered, discover]);
   useEffect(() => {
-    if (!storageReady || activeView !== "recommendations" || rated.length < 5 || recommendations.length || restoreAttempted.current) return;
+    if (!storageReady || !activeProfile || activeView !== "recommendations" || rated.length < 5 || recommendations.length || restoreAttempted.current) return;
     restoreAttempted.current = true;
     void discover(ratings);
-  }, [storageReady, activeView, rated.length, recommendations.length, discover, ratings]);
+  }, [storageReady, activeProfile, activeView, rated.length, recommendations.length, discover, ratings]);
 
   const rate = (id: number, value: number) => setRatings((current) => ({ ...current, [id]: value }));
   function advance(direction: "left" | "right") {
@@ -169,9 +200,31 @@ export default function Home() {
   function viewForRecommendation(movie: Recommendation): MovieView {
     return { id: movie.id, title: cleanTitle(movie.title), genre: catalog[movie.id]?.genres.join(" · ") || "Selección CineMatch", blurb: catalog[movie.id]?.overview || "Una recomendación encontrada al cruzar tus valoraciones con los patrones de la comunidad MovieLens.", tint: fallbackTints[movie.id % fallbackTints.length], reason: movie.reason, communityRating: movie.rating, count: movie.count };
   }
+  function selectProfile(profile: LocalProfile) {
+    if (activeProfile) writeProfileData(activeProfile.id, { ratings, genres: selectedGenres, view: activeView });
+    const data = readProfileData(profile.id);
+    window.localStorage.setItem("cinematch-active-profile", profile.id);
+    restoreAttempted.current = false;
+    setActiveProfile(profile); setRatings(data.ratings); setSelectedGenres(data.genres); setActiveView(data.view);
+    setRecommendations([]); setHasDiscovered(false); setCurrentCard(0); setSelectedMovie(null); setProfileDialogOpen(false);
+  }
+  function createProfile(name: string) {
+    const profile = { id: crypto.randomUUID(), name: name.trim() };
+    const nextProfiles = [...profiles, profile];
+    const carryLegacyData = profiles.length === 0 && !activeProfile;
+    const data: ProfileData = carryLegacyData ? { ratings, genres: selectedGenres, view: activeView } : { ratings: {}, genres: [], view: "discover" };
+    writeProfileData(profile.id, data);
+    window.localStorage.setItem("cinematch-profiles", JSON.stringify(nextProfiles));
+    window.localStorage.setItem("cinematch-active-profile", profile.id);
+    if (carryLegacyData) {
+      window.localStorage.removeItem("cinematch-ratings"); window.localStorage.removeItem("cinematch-genres"); window.localStorage.removeItem("cinematch-view");
+    }
+    setProfiles(nextProfiles); setActiveProfile(profile); setRatings(data.ratings); setSelectedGenres(data.genres); setActiveView(data.view);
+    setRecommendations([]); setHasDiscovered(false); restoreAttempted.current = false; setProfileDialogOpen(false);
+  }
 
   return <main className="min-h-screen overflow-x-hidden bg-[#080812] pb-16 text-[#f7f1e7] sm:pb-0">
-    <Navigation ratedCount={rated.length} activeView={activeView} canViewRecommendations={rated.length >= 5} onNavigate={setActiveView} />
+    <Navigation ratedCount={rated.length} activeView={activeView} canViewRecommendations={rated.length >= 5} profileName={activeProfile?.name} onProfileClick={() => setProfileDialogOpen(true)} onNavigate={setActiveView} />
     {activeView === "discover" && <GenreIntro selectedGenres={selectedGenres} onToggle={(genre) => setSelectedGenres((current) => current.includes(genre) ? current.filter((item) => item !== genre) : [...current, genre])} onContinue={() => setActiveView("ratings")} />}
     {activeView === "ratings" && <section className="relative min-h-screen px-5 pb-12 pt-24 sm:px-8 sm:pt-28">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_28%,rgba(97,74,180,.22),transparent_34%),linear-gradient(180deg,#080812_0%,#0c0c19_58%,#080812_100%)]" />
@@ -199,17 +252,32 @@ export default function Home() {
     </section>}
     {activeView === "recommendations" && <RecommendationsView recommendations={recommendations} catalog={catalog} ratings={ratings} loading={loading} error={error} onRefresh={() => void discover(ratings)} onOpen={(movie) => setSelectedMovie(viewForRecommendation(movie))} onRate={rate} />}
     {selectedMovie && <MovieModal movie={selectedMovie} metadata={catalog[selectedMovie.id]} rating={ratings[selectedMovie.id]} onRate={(value) => rate(selectedMovie.id, value)} onClose={() => setSelectedMovie(null)} />}
+    {storageReady && (!activeProfile || profileDialogOpen) && <ProfileDialog profiles={profiles} activeProfile={activeProfile} hasLegacyRatings={!activeProfile && rated.length > 0} onSelect={selectProfile} onCreate={createProfile} onClose={activeProfile ? () => setProfileDialogOpen(false) : undefined} />}
   </main>;
 }
 
-function Navigation({ ratedCount, activeView, canViewRecommendations, onNavigate }: { ratedCount: number; activeView: AppView; canViewRecommendations: boolean; onNavigate: (view: AppView) => void }) {
+function Navigation({ ratedCount, activeView, canViewRecommendations, profileName, onProfileClick, onNavigate }: { ratedCount: number; activeView: AppView; canViewRecommendations: boolean; profileName?: string; onProfileClick: () => void; onNavigate: (view: AppView) => void }) {
   const items: Array<{ view: AppView; label: string }> = [{ view: "discover", label: "Descubrir" }, { view: "ratings", label: "Valorar" }, { view: "recommendations", label: "Para ti" }];
   const tabs = (mobile = false) => items.map(({ view, label }) => {
     const disabled = view === "recommendations" && !canViewRecommendations;
     const active = activeView === view;
     return <button key={view} type="button" disabled={disabled} title={disabled ? "Valora al menos 5 películas para acceder" : undefined} onClick={() => onNavigate(view)} className={`${mobile ? "flex-1 py-3 text-xs" : "px-3 py-2 text-sm"} relative font-medium transition ${active ? "text-white" : "text-white/42 hover:text-white/75"} disabled:cursor-not-allowed disabled:opacity-25`}><span>{label}</span>{active && <span className={`absolute bg-[#a99bff] ${mobile ? "inset-x-5 top-0 h-0.5" : "inset-x-3 -bottom-[13px] h-0.5"}`} />}</button>;
   });
-  return <><nav className="fixed inset-x-0 top-0 z-40 border-b border-white/[.06] bg-[#080812]/75 backdrop-blur-xl"><div className="mx-auto grid h-16 max-w-[1500px] grid-cols-[1fr_auto] items-center px-5 sm:h-18 sm:grid-cols-[1fr_auto_1fr] sm:px-8 lg:px-12"><button type="button" onClick={() => onNavigate("discover")} className="justify-self-start text-xl font-black tracking-[-.09em] text-[#b3a6ff] sm:text-2xl">CINEMATCH</button><div className="hidden items-center gap-2 sm:flex">{tabs()}</div><div className="flex items-center gap-2 justify-self-end rounded-full border border-white/12 bg-white/[.06] px-3 py-1.5 text-[11px] text-white/65 sm:text-xs"><span className={`h-1.5 w-1.5 rounded-full ${ratedCount >= 5 ? "bg-[#e8c77a] shadow-[0_0_10px_#e8c77a]" : "bg-[#8f7de8]"}`} /><span className="tabular-nums">{ratedCount}</span><span className="hidden lg:inline"> valoradas</span></div></div></nav><nav aria-label="Navegación principal" className="fixed inset-x-0 bottom-0 z-40 flex border-t border-white/10 bg-[#0d0d18]/95 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl sm:hidden">{tabs(true)}</nav></>;
+  return <><nav className="fixed inset-x-0 top-0 z-40 border-b border-white/[.06] bg-[#080812]/75 backdrop-blur-xl"><div className="mx-auto grid h-16 max-w-[1500px] grid-cols-[1fr_auto] items-center px-5 sm:h-18 sm:grid-cols-[1fr_auto_1fr] sm:px-8 lg:px-12"><button type="button" onClick={() => onNavigate("discover")} className="justify-self-start text-xl font-black tracking-[-.09em] text-[#b3a6ff] sm:text-2xl">CINEMATCH</button><div className="hidden items-center gap-2 sm:flex">{tabs()}</div><button type="button" onClick={onProfileClick} className="flex max-w-36 items-center gap-2 justify-self-end rounded-full border border-white/12 bg-white/[.06] px-2.5 py-1.5 text-[11px] text-white/65 transition hover:border-white/25 hover:text-white sm:max-w-48 sm:text-xs"><span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#7161bd] text-[10px] font-bold text-white">{profileName?.charAt(0).toUpperCase() || "?"}</span><span className="truncate">{profileName || "Crear perfil"}</span><span className="tabular-nums text-white/35">· {ratedCount}</span></button></div></nav><nav aria-label="Navegación principal" className="fixed inset-x-0 bottom-0 z-40 flex border-t border-white/10 bg-[#0d0d18]/95 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl sm:hidden">{tabs(true)}</nav></>;
+}
+
+function ProfileDialog({ profiles, activeProfile, hasLegacyRatings, onSelect, onCreate, onClose }: { profiles: LocalProfile[]; activeProfile: LocalProfile | null; hasLegacyRatings: boolean; onSelect: (profile: LocalProfile) => void; onCreate: (name: string) => void; onClose?: () => void }) {
+  const [name, setName] = useState("");
+  const [error, setError] = useState("");
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const cleanName = name.trim();
+    if (cleanName.length < 2) return setError("Escribe al menos dos caracteres.");
+    if (cleanName.length > 20) return setError("El nombre puede tener como máximo 20 caracteres.");
+    if (profiles.some((profile) => profile.name.toLocaleLowerCase("es") === cleanName.toLocaleLowerCase("es"))) return setError("Ya existe un perfil con ese nombre.");
+    onCreate(cleanName);
+  }
+  return <div className="fixed inset-0 z-[60] grid place-items-center overflow-y-auto bg-[#05050c]/90 p-4 backdrop-blur-xl" onMouseDown={(event) => { if (onClose && event.target === event.currentTarget) onClose(); }}><section role="dialog" aria-modal="true" aria-labelledby="profile-title" className="relative w-full max-w-lg rounded-3xl border border-white/12 bg-[#12121f] p-6 shadow-[0_30px_100px_rgba(0,0,0,.7)] sm:p-8">{onClose && <button type="button" onClick={onClose} aria-label="Cerrar perfiles" className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full border border-white/10 text-white/50 transition hover:text-white"><Icon name="close" className="h-4 w-4" /></button>}<p className="eyebrow">Perfiles locales</p><h2 id="profile-title" className="mt-3 text-3xl font-semibold tracking-[-.04em]">{activeProfile ? "¿Quién va a elegir?" : "Ponle nombre a tu perfil"}</h2><p className="mt-2 text-sm leading-6 text-white/50">Cada perfil conserva sus propias valoraciones, géneros y recomendaciones en este dispositivo.</p>{profiles.length > 0 && <div className="mt-6 grid grid-cols-2 gap-3">{profiles.map((profile) => <button key={profile.id} type="button" onClick={() => onSelect(profile)} className={`flex items-center gap-3 rounded-xl border p-3 text-left transition ${profile.id === activeProfile?.id ? "border-[#a99bff]/60 bg-[#7161bd]/15" : "border-white/10 bg-white/[.03] hover:border-white/25"}`}><span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-[#8f7de8] to-[#47377f] text-sm font-bold">{profile.name.charAt(0).toUpperCase()}</span><span className="truncate text-sm font-semibold">{profile.name}</span></button>)}</div>}<div className={`${profiles.length ? "mt-6 border-t border-white/8 pt-6" : "mt-6"}`}><p className="text-xs font-semibold uppercase tracking-[.14em] text-white/35">{profiles.length ? "Crear otro perfil" : "Tu nombre"}</p><form onSubmit={submit} className="mt-3 flex gap-2"><input autoFocus value={name} onChange={(event) => { setName(event.target.value); setError(""); }} placeholder="Por ejemplo, Carlos" maxLength={20} className="min-w-0 flex-1 rounded-full border border-white/12 bg-black/20 px-4 py-3 text-sm text-white outline-none placeholder:text-white/25 focus:border-[#a99bff]" /><button type="submit" className="primary-action shrink-0 px-5">Continuar</button></form>{error && <p role="alert" className="mt-2 text-xs text-rose-300">{error}</p>}{hasLegacyRatings && <p className="mt-3 text-xs leading-5 text-[#d6ca9b]">Tus valoraciones actuales se asignarán a este primer perfil.</p>}</div><p className="mt-6 text-[11px] leading-4 text-white/28">Los perfiles no se sincronizan entre navegadores ni dispositivos.</p></section></div>;
 }
 
 function GenreIntro({ selectedGenres, onToggle, onContinue }: { selectedGenres: string[]; onToggle: (genre: string) => void; onContinue: () => void }) {
