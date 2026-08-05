@@ -123,7 +123,12 @@ export async function POST(request: Request) {
     const reason = reasonType === "item"
       ? because ? `Porque te gustó ${because}` : "Parecida a películas que valoraste"
       : reasonType === "users" ? "Usuarios con gustos similares" : "Favorita de la comunidad";
-    return { ...toMovie(id), score: +value.score.toFixed(3), reason, reasonType, because };
+    const signals = {
+      popular: +(value.contributions.popular ?? 0).toFixed(3),
+      item: +(value.contributions.item ?? 0).toFixed(3),
+      users: +(value.contributions.users ?? 0).toFixed(3),
+    };
+    return { ...toMovie(id), score: +value.score.toFixed(3), reason, reasonType, because, signals };
   })
     .sort((a, b) => b.score - a.score).slice(0, 40);
   return Response.json({ hybrid, item, users, popular, diagnostics: { ratings: ratings.length, neighbours: userResult.neighbourCount } });

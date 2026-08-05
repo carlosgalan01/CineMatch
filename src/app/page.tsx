@@ -4,12 +4,13 @@ import Image from "next/image";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Film = { id: number; title: string; genre: string; blurb: string; tint: string };
-type Recommendation = { id: number; title: string; rating: number; count: number; score: number; reason: string; reasonType: "item" | "users" | "popular"; because?: string };
+type Recommendation = { id: number; title: string; rating: number; count: number; score: number; reason: string; reasonType: "item" | "users" | "popular"; because?: string; signals?: { popular: number; item: number; users: number } };
 type CatalogMovie = { movieId: number; sourceTitle: string; posterUrl: string | null; overview: string; genres: string[]; year?: string };
 type MovieView = { id: number; title: string; genre: string; blurb: string; tint: string; reason?: string; communityRating?: number; count?: number };
-type AppView = "discover" | "ratings" | "recommendations";
+type AppView = "discover" | "ratings" | "recommendations" | "motor";
 type LocalProfile = { id: string; name: string };
 type ProfileData = { ratings: Record<number, number>; genres: string[]; view: AppView; cardIndex: number };
+type Diagnostics = { ratings: number; neighbours: number };
 
 const genres = ["Acción", "Ciencia ficción", "Drama", "Thriller", "Comedia", "Animación", "Romance", "Clásicos"];
 const films: Film[] = [
@@ -106,7 +107,7 @@ function readProfileData(id: string): ProfileData {
     const savedGenres = JSON.parse(window.localStorage.getItem(profileKey(id, "genres")) ?? "[]") as string[];
     const savedView = window.localStorage.getItem(profileKey(id, "view")) as AppView | null;
     const savedCard = Number(window.localStorage.getItem(profileKey(id, "card")) ?? 0);
-    const view = savedView && ["discover", "ratings", "recommendations"].includes(savedView) ? savedView : Object.keys(ratings).length >= 5 ? "recommendations" : "discover";
+    const view = savedView && ["discover", "ratings", "recommendations", "motor"].includes(savedView) ? savedView : Object.keys(ratings).length >= 5 ? "recommendations" : "discover";
     return { ratings, genres: savedGenres, view, cardIndex: Number.isInteger(savedCard) && savedCard >= 0 ? savedCard : 0 };
   } catch {
     return { ratings: {}, genres: [], view: "discover", cardIndex: 0 };
@@ -148,6 +149,7 @@ export default function Home() {
   const [ratings, setRatings] = useState<Record<number, number>>({});
   const [storageReady, setStorageReady] = useState(false);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [diagnostics, setDiagnostics] = useState<Diagnostics | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [selectedMovie, setSelectedMovie] = useState<MovieView | null>(null);
@@ -179,7 +181,7 @@ export default function Home() {
           const legacyGenres = JSON.parse(window.localStorage.getItem("cinematch-genres") ?? "[]") as string[];
           const legacyView = window.localStorage.getItem("cinematch-view") as AppView | null;
           setRatings(legacyRatings); setSelectedGenres(legacyGenres);
-          if (legacyView && ["discover", "ratings", "recommendations"].includes(legacyView)) setActiveView(legacyView);
+          if (legacyView && ["discover", "ratings", "recommendations", "motor"].includes(legacyView)) setActiveView(legacyView);
           else if (Object.keys(legacyRatings).length >= 5) setActiveView("recommendations");
         }
       } catch { window.localStorage.removeItem("cinematch-ratings"); }
@@ -227,10 +229,10 @@ export default function Home() {
     setLoading(true); setError("");
     try {
       const response = await fetch("/api/recommend", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ratings: payload }) });
-      const result = await response.json() as { hybrid?: Recommendation[]; error?: string };
+      const result = await response.json() as { hybrid?: Recommendation[]; diagnostics?: Diagnostics; error?: string };
       if (!response.ok) throw new Error(result.error || "No hemos podido actualizar tu selección.");
       const nextRecommendations = result.hybrid ?? [];
-      setRecommendations(nextRecommendations); setHasDiscovered(true);
+      setRecommendations(nextRecommendations); setDiagnostics(result.diagnostics ?? null); setHasDiscovered(true);
       if (navigateToResults) setActiveView("recommendations");
       void loadCatalog(nextRecommendations.map((movie) => movie.id));
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "No hemos podido actualizar tu selección."); }
@@ -242,7 +244,7 @@ export default function Home() {
     return () => window.clearTimeout(timer);
   }, [ratings, hasDiscovered, discover]);
   useEffect(() => {
-    if (!storageReady || !activeProfile || activeView !== "recommendations" || rated.length < 5 || recommendations.length || restoreAttempted.current) return;
+    if (!storageReady || !activeProfile || !["recommendations", "motor"].includes(activeView) || rated.length < 5 || recommendations.length || restoreAttempted.current) return;
     restoreAttempted.current = true;
     void discover(ratings);
   }, [storageReady, activeProfile, activeView, rated.length, recommendations.length, discover, ratings]);
@@ -263,7 +265,7 @@ export default function Home() {
     window.localStorage.setItem("cinematch-active-profile", profile.id);
     restoreAttempted.current = false;
     setActiveProfile(profile); setRatings(data.ratings); setSelectedGenres(data.genres); setActiveView(data.view); setCurrentCard(data.cardIndex);
-    setRecommendations([]); setHasDiscovered(false); setSelectedMovie(null); setProfileDialogOpen(false);
+    setRecommendations([]); setDiagnostics(null); setHasDiscovered(false); setSelectedMovie(null); setProfileDialogOpen(false);
   }
   function createProfile(name: string) {
     const profile = { id: crypto.randomUUID(), name: name.trim() };
@@ -277,7 +279,7 @@ export default function Home() {
       window.localStorage.removeItem("cinematch-ratings"); window.localStorage.removeItem("cinematch-genres"); window.localStorage.removeItem("cinematch-view");
     }
     setProfiles(nextProfiles); setActiveProfile(profile); setRatings(data.ratings); setSelectedGenres(data.genres); setActiveView(data.view); setCurrentCard(data.cardIndex);
-    setRecommendations([]); setHasDiscovered(false); restoreAttempted.current = false; setProfileDialogOpen(false);
+    setRecommendations([]); setDiagnostics(null); setHasDiscovered(false); restoreAttempted.current = false; setProfileDialogOpen(false);
   }
 
   return <main className="min-h-screen overflow-x-hidden bg-[#080812] pb-16 text-[#f7f1e7] sm:pb-0">
@@ -308,13 +310,14 @@ export default function Home() {
       </div>
     </section>}
     {activeView === "recommendations" && <RecommendationsView recommendations={recommendations} catalog={catalog} ratings={ratings} loading={loading} error={error} onRefresh={() => void discover(ratings)} onOpen={(movie) => setSelectedMovie(viewForRecommendation(movie))} onRate={rate} />}
+    {activeView === "motor" && <MotorView ratedCount={rated.length} recommendations={recommendations} diagnostics={diagnostics} loading={loading} onCalculate={() => void discover(ratings)} />}
     {selectedMovie && <MovieModal movie={selectedMovie} metadata={catalog[selectedMovie.id]} rating={ratings[selectedMovie.id]} onRate={(value) => rate(selectedMovie.id, value)} onClose={() => setSelectedMovie(null)} />}
     {storageReady && (!activeProfile || profileDialogOpen) && <ProfileDialog profiles={profiles} activeProfile={activeProfile} hasLegacyRatings={!activeProfile && rated.length > 0} onSelect={selectProfile} onCreate={createProfile} onClose={activeProfile ? () => setProfileDialogOpen(false) : undefined} />}
   </main>;
 }
 
 function Navigation({ ratedCount, activeView, canViewRecommendations, profileName, onProfileClick, onNavigate }: { ratedCount: number; activeView: AppView; canViewRecommendations: boolean; profileName?: string; onProfileClick: () => void; onNavigate: (view: AppView) => void }) {
-  const items: Array<{ view: AppView; label: string }> = [{ view: "discover", label: "Descubrir" }, { view: "ratings", label: "Valorar" }, { view: "recommendations", label: "Para ti" }];
+  const items: Array<{ view: AppView; label: string }> = [{ view: "discover", label: "Descubrir" }, { view: "ratings", label: "Valorar" }, { view: "recommendations", label: "Para ti" }, { view: "motor", label: "Motor" }];
   const tabs = (mobile = false) => items.map(({ view, label }) => {
     const disabled = view === "recommendations" && !canViewRecommendations;
     const active = activeView === view;
@@ -339,6 +342,38 @@ function ProfileDialog({ profiles, activeProfile, hasLegacyRatings, onSelect, on
 
 function GenreIntro({ selectedGenres, onToggle, onContinue }: { selectedGenres: string[]; onToggle: (genre: string) => void; onContinue: () => void }) {
   return <section className="relative flex min-h-screen items-end overflow-hidden px-5 pb-8 pt-24 sm:items-center sm:px-8 sm:py-28 lg:px-12"><div className="absolute inset-0 bg-cover bg-[68%_center] sm:bg-center" style={{ backgroundImage: "url('/images/cinematch-hero.png')" }} /><div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(5,6,14,.98)_0%,rgba(5,6,14,.88)_36%,rgba(5,6,14,.18)_78%),linear-gradient(0deg,#080812_0%,transparent_42%)] sm:bg-[linear-gradient(90deg,rgba(5,6,14,.98)_4%,rgba(5,6,14,.78)_48%,rgba(5,6,14,.08)_82%)]" /><div className="relative mx-auto grid w-full max-w-[1500px] items-end gap-8 lg:grid-cols-[minmax(0,680px)_minmax(360px,470px)] lg:gap-16"><div><p className="eyebrow">Recomendaciones hechas contigo</p><h1 className="mt-4 max-w-3xl text-[clamp(3.2rem,7vw,6.8rem)] font-semibold leading-[.84] tracking-[-.075em]">Tu próxima<br /><span className="font-serif font-normal italic text-[#e8c77a]">gran película.</span></h1><p className="mt-6 max-w-lg text-base leading-7 text-white/62 sm:text-lg">No vienes a recorrer un catálogo infinito. Valora unas pocas historias y deja que CineMatch encuentre las conexiones.</p></div><div className="rounded-[1.5rem] border border-white/12 bg-[#121221]/80 p-5 shadow-[0_24px_80px_rgba(0,0,0,.45)] backdrop-blur-xl sm:p-7"><div className="flex items-center justify-between"><p className="eyebrow">Paso 1 · Tus coordenadas</p><span className="text-xs tabular-nums text-white/35">{selectedGenres.length} elegidos</span></div><h2 className="mt-3 text-2xl font-semibold tracking-[-.03em]">¿Qué historias te atraen?</h2><p className="mt-2 text-sm leading-6 text-white/50">Elige al menos dos. Tus valoraciones tendrán la última palabra.</p><div className="mt-5 flex flex-wrap gap-2.5">{genres.map((genre) => { const selected = selectedGenres.includes(genre); return <button key={genre} type="button" aria-pressed={selected} onClick={() => onToggle(genre)} className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b9adff] ${selected ? "border-[#a99bff] bg-[#7161bd]/70 text-white" : "border-white/13 bg-white/[.045] text-white/62 hover:border-white/35 hover:text-white"}`}>{selected && <Icon name="check" className="h-3.5 w-3.5" />}{genre}</button>; })}</div><button type="button" disabled={selectedGenres.length < 2} onClick={onContinue} className="primary-action mt-6 w-full">Empezar mi selección <Icon name="arrow" className="h-5 w-5" /></button></div></div></section>;
+}
+
+function MotorView({ ratedCount, recommendations, diagnostics, loading, onCalculate }: { ratedCount: number; recommendations: Recommendation[]; diagnostics: Diagnostics | null; loading: boolean; onCalculate: () => void }) {
+  const enoughHistory = ratedCount >= 5;
+  const weights = enoughHistory
+    ? [{ label: "Películas similares", value: 55, color: "#9f8cff", detail: "Afinidad ítem–ítem" }, { label: "Usuarios similares", value: 35, color: "#69c7dd", detail: "Afinidad usuario–usuario" }, { label: "Popularidad", value: 10, color: "#e8c77a", detail: "Señal de respaldo" }]
+    : [{ label: "Popularidad", value: 45, color: "#e8c77a", detail: "Reduce el arranque en frío" }, { label: "Películas similares", value: 40, color: "#9f8cff", detail: "Primeras afinidades" }, { label: "Usuarios similares", value: 15, color: "#69c7dd", detail: "Evidencia todavía limitada" }];
+  return <section className="min-h-screen bg-[radial-gradient(circle_at_75%_8%,rgba(104,78,190,.16),transparent_28%),#080812] px-5 pb-20 pt-28 sm:px-8 lg:px-12">
+    <div className="mx-auto max-w-6xl">
+      <div className="grid gap-8 border-b border-white/8 pb-10 lg:grid-cols-[1fr_360px] lg:items-end"><div><div className="flex items-center gap-3"><p className="eyebrow">Transparencia del modelo</p><span className="rounded-full border border-[#e8c77a]/25 bg-[#e8c77a]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#e8c77a]">Vista académica</span></div><h1 className="mt-4 max-w-3xl text-4xl font-semibold leading-[.95] tracking-[-.055em] sm:text-6xl">Así decide <span className="font-serif font-normal italic text-[#b9adff]">CineMatch.</span></h1><p className="mt-5 max-w-2xl text-sm leading-7 text-white/55 sm:text-base">El resultado no es una lista precalculada. Cada valoración reconstruye tu perfil y vuelve a combinar tres señales sobre las 100.003 valoraciones de MovieLens.</p></div><div className="rounded-2xl border border-white/10 bg-white/[.035] p-5"><div className="flex items-center justify-between"><span className="text-xs font-semibold uppercase tracking-[.15em] text-white/40">Estado de tu perfil</span><span className={`h-2 w-2 rounded-full ${enoughHistory ? "bg-emerald-400 shadow-[0_0_12px_#34d399]" : "bg-[#e8c77a]"}`} /></div><p className="mt-4 text-3xl font-semibold">{ratedCount} <span className="text-base font-normal text-white/35">películas</span></p><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/8"><div className="h-full rounded-full bg-gradient-to-r from-[#8f7de8] to-[#e8c77a] transition-[width]" style={{ width: `${Math.min(100, ratedCount / 5 * 100)}%` }} /></div><p className="mt-3 text-xs leading-5 text-white/40">{enoughHistory ? "Modo personalizado activo: las afinidades dominan la mezcla." : `Arranque en frío: faltan ${5 - ratedCount} valoraciones para dar más peso a tus afinidades.`}</p></div></div>
+
+      <div className="mt-10 grid gap-6 lg:grid-cols-[1fr_1.15fr]"><article className="rounded-2xl border border-white/10 bg-[#11111d] p-6 sm:p-7"><p className="eyebrow">01 · La mezcla activa</p><h2 className="mt-3 text-2xl font-semibold">Los pesos cambian contigo</h2><div className="mt-7 space-y-6">{weights.map((weight) => <div key={weight.label}><div className="mb-2 flex items-end justify-between gap-4"><div><p className="text-sm font-semibold">{weight.label}</p><p className="mt-0.5 text-xs text-white/35">{weight.detail}</p></div><span className="text-xl font-semibold tabular-nums" style={{ color: weight.color }}>{weight.value}%</span></div><div className="h-2 overflow-hidden rounded-full bg-white/7"><div className="h-full rounded-full transition-[width] duration-500" style={{ width: `${weight.value}%`, backgroundColor: weight.color }} /></div></div>)}</div><div className="mt-7 rounded-xl border border-white/8 bg-black/15 p-4 text-xs leading-5 text-white/40">Con menos de 5 notas: <strong className="text-white/65">45 / 40 / 15</strong>. Desde la quinta: <strong className="text-white/65">10 / 55 / 35</strong>. El cambio evita personalizar en exceso con muy poca evidencia.</div></article>
+
+        <article className="rounded-2xl border border-white/10 bg-[#11111d] p-6 sm:p-7"><p className="eyebrow">02 · Tres puntos de vista</p><h2 className="mt-3 text-2xl font-semibold">Del historial al ranking</h2><div className="mt-7 grid gap-3 sm:grid-cols-3"><SignalCard number="A" title="Popularidad" text="Prioriza títulos con suficiente respaldo de la comunidad." color="#e8c77a" /><SignalCard number="B" title="Ítem–ítem" text="Busca películas valoradas por públicos parecidos a las que te gustaron." color="#9f8cff" /><SignalCard number="C" title="Usuario–usuario" text="Encuentra hasta 25 perfiles históricos con patrones próximos al tuyo." color="#69c7dd" /></div><div className="mt-5 flex items-center gap-3 rounded-xl border border-[#a99bff]/15 bg-[#7161bd]/10 p-4"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#8f7de8]/20 text-[#c8beff]"><Icon name="spark" className="h-4 w-4" /></span><p className="text-xs leading-5 text-white/48">Cada lista aporta puntos según la posición de sus candidatos. La suma ponderada produce el ranking híbrido final.</p></div></article></div>
+
+      <article className="mt-6 rounded-2xl border border-white/10 bg-[#11111d] p-6 sm:p-7"><div className="flex flex-wrap items-end justify-between gap-4"><div><p className="eyebrow">03 · Una recomendación, explicada</p><h2 className="mt-3 text-2xl font-semibold">Qué señales empujan cada resultado</h2></div>{diagnostics && <div className="flex gap-5 text-right"><div><p className="text-lg font-semibold">{diagnostics.neighbours}</p><p className="text-[10px] uppercase tracking-wider text-white/30">Vecinos usados</p></div><div><p className="text-lg font-semibold">{recommendations.length}</p><p className="text-[10px] uppercase tracking-wider text-white/30">Candidatos finales</p></div></div>}</div>
+        {recommendations.length ? <div className="mt-7 grid gap-4 md:grid-cols-3">{recommendations.slice(0, 3).map((movie, index) => <RecommendationBreakdown key={movie.id} movie={movie} position={index + 1} />)}</div> : <div className="mt-7 rounded-xl border border-dashed border-white/12 p-8 text-center"><p className="text-sm text-white/45">{enoughHistory ? "Calcula tus recomendaciones para ver aquí el reparto real de señales." : "Cuando alcances cinco valoraciones, aquí aparecerá el desglose real de tus primeras recomendaciones."}</p>{enoughHistory && <button type="button" onClick={onCalculate} disabled={loading} className="primary-action mt-5">{loading ? "Calculando…" : "Analizar mi perfil"}</button>}</div>}
+      </article>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-2"><article className="rounded-2xl border border-white/10 bg-white/[.025] p-6"><p className="eyebrow">Qué ocurre al puntuar</p><ol className="mt-5 space-y-4">{["La nota se guarda en el perfil local y la película queda fuera de los candidatos.", "Tras 450 ms, el servidor recalcula similitudes con el historial actualizado.", "Los tres rankings se vuelven a ponderar y las tarjetas cambian de orden."].map((step, index) => <li key={step} className="flex gap-4"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-[#a99bff]/25 text-xs text-[#c8beff]">{index + 1}</span><p className="text-sm leading-6 text-white/50">{step}</p></li>)}</ol></article><article className="rounded-2xl border border-white/10 bg-white/[.025] p-6"><p className="eyebrow">Por qué una película queda fuera</p><ul className="mt-5 space-y-3 text-sm leading-6 text-white/50"><li>— Ya la has valorado: el motor la excluye.</li><li>— No alcanza evidencia mínima: 40 notas para popularidad o 15 para afinidad entre películas.</li><li>— No recibe apoyo suficiente de usuarios similares o queda fuera de los 20 primeros candidatos de cada señal.</li><li>— Su puntuación combinada no entra entre los 40 resultados finales.</li></ul></article></div>
+    </div>
+  </section>;
+}
+
+function SignalCard({ number, title, text, color }: { number: string; title: string; text: string; color: string }) {
+  return <div className="rounded-xl border border-white/8 bg-white/[.03] p-4"><span className="grid h-7 w-7 place-items-center rounded-full text-xs font-bold text-[#0b0b14]" style={{ backgroundColor: color }}>{number}</span><h3 className="mt-4 text-sm font-semibold">{title}</h3><p className="mt-2 text-xs leading-5 text-white/38">{text}</p></div>;
+}
+
+function RecommendationBreakdown({ movie, position }: { movie: Recommendation; position: number }) {
+  const total = movie.score || 1;
+  const bars = [{ label: "Popularidad", value: movie.signals?.popular ?? 0, color: "#e8c77a" }, { label: "Películas", value: movie.signals?.item ?? 0, color: "#9f8cff" }, { label: "Usuarios", value: movie.signals?.users ?? 0, color: "#69c7dd" }];
+  return <div className="rounded-xl border border-white/8 bg-black/15 p-5"><div className="flex items-start gap-3"><span className="text-2xl font-semibold text-white/20">0{position}</span><div><h3 className="line-clamp-2 font-semibold leading-5">{cleanTitle(movie.title)}</h3><p className="mt-1 text-[11px] text-[#c8beff]">{movie.reason}</p></div></div><div className="mt-5 space-y-3">{bars.map((bar) => <div key={bar.label}><div className="mb-1 flex justify-between text-[10px] text-white/35"><span>{bar.label}</span><span>{Math.round(bar.value / total * 100)}%</span></div><div className="h-1.5 overflow-hidden rounded-full bg-white/7"><div className="h-full rounded-full" style={{ width: `${Math.min(100, bar.value / total * 100)}%`, backgroundColor: bar.color }} /></div></div>)}</div><p className="mt-4 text-[10px] uppercase tracking-wider text-white/25">Puntuación híbrida · {movie.score.toFixed(3)}</p></div>;
 }
 
 function RecommendationsView({ recommendations, catalog, ratings, loading, error, onRefresh, onOpen, onRate }: { recommendations: Recommendation[]; catalog: Record<number, CatalogMovie>; ratings: Record<number, number>; loading: boolean; error: string; onRefresh: () => void; onOpen: (movie: Recommendation) => void; onRate: (id: number, value: number) => void }) {
