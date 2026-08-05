@@ -9,7 +9,7 @@ type CatalogMovie = { movieId: number; sourceTitle: string; posterUrl: string | 
 type MovieView = { id: number; title: string; genre: string; blurb: string; tint: string; reason?: string; communityRating?: number; count?: number };
 type AppView = "discover" | "ratings" | "recommendations";
 type LocalProfile = { id: string; name: string };
-type ProfileData = { ratings: Record<number, number>; genres: string[]; view: AppView };
+type ProfileData = { ratings: Record<number, number>; genres: string[]; view: AppView; cardIndex: number };
 
 const genres = ["Acción", "Ciencia ficción", "Drama", "Thriller", "Comedia", "Animación", "Romance", "Clásicos"];
 const films: Film[] = [
@@ -41,22 +41,75 @@ const films: Film[] = [
   { id: 216, title: "When Harry Met Sally...", genre: "Romance", blurb: "¿Pueden ser amigos?", tint: "from-rose-400 via-stone-700 to-[#080812]" },
   { id: 483, title: "Casablanca", genre: "Clásicos", blurb: "Siempre nos quedará París", tint: "from-amber-200 via-stone-700 to-[#080812]" },
   { id: 12, title: "The Usual Suspects", genre: "Clásicos", blurb: "El mayor truco", tint: "from-zinc-500 via-zinc-900 to-[#080812]" },
+  { id: 176, title: "Aliens", genre: "Acción", blurb: "Esta vez es la guerra", tint: "from-cyan-700 via-slate-950 to-[#080812]" },
+  { id: 568, title: "Speed", genre: "Acción", blurb: "No bajes de ochenta", tint: "from-red-600 via-zinc-950 to-[#080812]" },
+  { id: 2, title: "GoldenEye", genre: "Acción", blurb: "Bond entra en una nueva era", tint: "from-amber-500 via-slate-900 to-[#080812]" },
+  { id: 79, title: "The Fugitive", genre: "Acción", blurb: "Un hombre inocente a la fuga", tint: "from-sky-700 via-zinc-950 to-[#080812]" },
+  { id: 405, title: "Mission: Impossible", genre: "Acción", blurb: "La misión empieza aquí", tint: "from-blue-700 via-black to-[#080812]" },
+  { id: 385, title: "True Lies", genre: "Acción", blurb: "Espías, secretos y una doble vida", tint: "from-orange-700 via-zinc-950 to-[#080812]" },
+  { id: 183, title: "Alien", genre: "Ciencia ficción", blurb: "En el espacio nadie puede oír tus gritos", tint: "from-emerald-900 via-slate-950 to-[#080812]" },
+  { id: 135, title: "2001: A Space Odyssey", genre: "Ciencia ficción", blurb: "El viaje definitivo", tint: "from-slate-200 via-blue-950 to-[#080812]" },
+  { id: 423, title: "E.T. the Extra-Terrestrial", genre: "Ciencia ficción", blurb: "Una amistad de otro mundo", tint: "from-indigo-500 via-blue-950 to-[#080812]" },
+  { id: 250, title: "The Fifth Element", genre: "Ciencia ficción", blurb: "El futuro necesita un quinto elemento", tint: "from-orange-500 via-indigo-950 to-[#080812]" },
+  { id: 7, title: "Twelve Monkeys", genre: "Ciencia ficción", blurb: "El futuro está en el pasado", tint: "from-yellow-700 via-zinc-950 to-[#080812]" },
+  { id: 258, title: "Contact", genre: "Ciencia ficción", blurb: "La señal que cambia todo", tint: "from-sky-500 via-indigo-950 to-[#080812]" },
+  { id: 257, title: "Men in Black", genre: "Ciencia ficción", blurb: "Ellos protegen la Tierra", tint: "from-zinc-500 via-black to-[#080812]" },
+  { id: 357, title: "One Flew Over the Cuckoo's Nest", genre: "Drama", blurb: "Una rebelión contra las reglas", tint: "from-amber-700 via-stone-950 to-[#080812]" },
+  { id: 272, title: "Good Will Hunting", genre: "Drama", blurb: "El talento también necesita valor", tint: "from-emerald-700 via-stone-950 to-[#080812]" },
+  { id: 97, title: "Dances with Wolves", genre: "Drama", blurb: "Una frontera, dos mundos", tint: "from-amber-500 via-sky-950 to-[#080812]" },
+  { id: 192, title: "Raging Bull", genre: "Drama", blurb: "Dentro y fuera del cuadrilátero", tint: "from-zinc-300 via-zinc-900 to-[#080812]" },
+  { id: 23, title: "Taxi Driver", genre: "Drama", blurb: "Las noches de una ciudad enferma", tint: "from-yellow-700 via-red-950 to-[#080812]" },
+  { id: 69, title: "Forrest Gump", genre: "Drama", blurb: "Una vida extraordinaria", tint: "from-sky-500 via-emerald-950 to-[#080812]" },
+  { id: 56, title: "Pulp Fiction", genre: "Drama", blurb: "Historias cruzadas bajo el neón", tint: "from-yellow-500 via-red-950 to-[#080812]" },
+  { id: 11, title: "Seven", genre: "Thriller", blurb: "Siete pecados, una investigación", tint: "from-amber-900 via-zinc-950 to-[#080812]" },
+  { id: 273, title: "Heat", genre: "Thriller", blurb: "Dos hombres a ambos lados de la ley", tint: "from-blue-600 via-slate-950 to-[#080812]" },
+  { id: 479, title: "Vertigo", genre: "Thriller", blurb: "Una obsesión que desafía la realidad", tint: "from-emerald-600 via-red-950 to-[#080812]" },
+  { id: 185, title: "Psycho", genre: "Thriller", blurb: "Una parada que nunca se olvida", tint: "from-zinc-200 via-zinc-900 to-[#080812]" },
+  { id: 603, title: "Rear Window", genre: "Thriller", blurb: "Todo el mundo guarda un secreto", tint: "from-amber-600 via-slate-950 to-[#080812]" },
+  { id: 302, title: "L.A. Confidential", genre: "Thriller", blurb: "La ciudad de las apariencias", tint: "from-yellow-700 via-zinc-950 to-[#080812]" },
+  { id: 173, title: "The Princess Bride", genre: "Comedia", blurb: "Espadas, aventuras y amor verdadero", tint: "from-emerald-600 via-blue-950 to-[#080812]" },
+  { id: 94, title: "Home Alone", genre: "Comedia", blurb: "Navidad, trampas y una casa vacía", tint: "from-red-600 via-emerald-950 to-[#080812]" },
+  { id: 393, title: "Mrs. Doubtfire", genre: "Comedia", blurb: "Una familia, un disfraz inolvidable", tint: "from-sky-500 via-violet-950 to-[#080812]" },
+  { id: 70, title: "Four Weddings and a Funeral", genre: "Comedia", blurb: "El amor nunca llega a tiempo", tint: "from-rose-500 via-slate-950 to-[#080812]" },
+  { id: 25, title: "The Birdcage", genre: "Comedia", blurb: "Una cena difícil de mantener en secreto", tint: "from-fuchsia-600 via-blue-950 to-[#080812]" },
+  { id: 71, title: "The Lion King", genre: "Animación", blurb: "Recuerda quién eres", tint: "from-amber-500 via-orange-950 to-[#080812]" },
+  { id: 95, title: "Aladdin", genre: "Animación", blurb: "Un deseo puede cambiarlo todo", tint: "from-blue-600 via-violet-950 to-[#080812]" },
+  { id: 588, title: "Beauty and the Beast", genre: "Animación", blurb: "La belleza está en el interior", tint: "from-amber-500 via-blue-950 to-[#080812]" },
+  { id: 99, title: "Snow White and the Seven Dwarfs", genre: "Animación", blurb: "El cuento que abrió una era", tint: "from-sky-500 via-red-950 to-[#080812]" },
+  { id: 404, title: "Pinocchio", genre: "Animación", blurb: "El deseo de ser un niño de verdad", tint: "from-yellow-500 via-blue-950 to-[#080812]" },
+  { id: 432, title: "Fantasia", genre: "Animación", blurb: "Música convertida en imágenes", tint: "from-indigo-500 via-blue-950 to-[#080812]" },
+  { id: 91, title: "The Nightmare Before Christmas", genre: "Animación", blurb: "Cuando Halloween descubre la Navidad", tint: "from-violet-700 via-black to-[#080812]" },
+  { id: 596, title: "The Hunchback of Notre Dame", genre: "Animación", blurb: "Las campanas de Notre Dame", tint: "from-red-700 via-indigo-950 to-[#080812]" },
+  { id: 313, title: "Titanic", genre: "Romance", blurb: "Un amor contra el tiempo", tint: "from-sky-500 via-blue-950 to-[#080812]" },
+  { id: 739, title: "Pretty Woman", genre: "Romance", blurb: "Un encuentro inesperado", tint: "from-rose-500 via-red-950 to-[#080812]" },
+  { id: 88, title: "Sleepless in Seattle", genre: "Romance", blurb: "Dos ciudades y una voz en la radio", tint: "from-blue-500 via-slate-950 to-[#080812]" },
+  { id: 275, title: "Sense and Sensibility", genre: "Romance", blurb: "Entre la razón y el corazón", tint: "from-emerald-600 via-stone-950 to-[#080812]" },
+  { id: 286, title: "The English Patient", genre: "Romance", blurb: "Un amor escrito en el desierto", tint: "from-amber-500 via-stone-950 to-[#080812]" },
+  { id: 133, title: "Gone with the Wind", genre: "Romance", blurb: "Una pasión en tiempos de guerra", tint: "from-red-600 via-zinc-950 to-[#080812]" },
+  { id: 134, title: "Citizen Kane", genre: "Clásicos", blurb: "El misterio de una última palabra", tint: "from-zinc-300 via-zinc-900 to-[#080812]" },
+  { id: 511, title: "Lawrence of Arabia", genre: "Clásicos", blurb: "El desierto y la leyenda", tint: "from-amber-400 via-orange-950 to-[#080812]" },
+  { id: 178, title: "12 Angry Men", genre: "Clásicos", blurb: "Una duda razonable", tint: "from-stone-300 via-zinc-900 to-[#080812]" },
+  { id: 480, title: "North by Northwest", genre: "Clásicos", blurb: "El hombre equivocado en el lugar equivocado", tint: "from-sky-500 via-zinc-950 to-[#080812]" },
+  { id: 488, title: "Sunset Boulevard", genre: "Clásicos", blurb: "El lado oscuro de Hollywood", tint: "from-zinc-300 via-amber-950 to-[#080812]" },
+  { id: 484, title: "The Maltese Falcon", genre: "Clásicos", blurb: "Todos buscan la misma pieza", tint: "from-amber-700 via-zinc-950 to-[#080812]" },
+  { id: 705, title: "Singin' in the Rain", genre: "Clásicos", blurb: "Hollywood aprende a cantar", tint: "from-yellow-400 via-blue-950 to-[#080812]" },
 ];
 
 const stars = [1, 2, 3, 4, 5];
 const fallbackTints = ["from-violet-700 via-indigo-950 to-[#080812]", "from-sky-700 via-slate-950 to-[#080812]", "from-amber-600 via-stone-950 to-[#080812]", "from-emerald-700 via-slate-950 to-[#080812]"];
 const cleanTitle = (title: string) => title.replace(/\s*\(\d{4}\)$/, "");
-const profileKey = (id: string, field: "ratings" | "genres" | "view") => `cinematch-profile:${id}:${field}`;
+const profileKey = (id: string, field: "ratings" | "genres" | "view" | "card") => `cinematch-profile:${id}:${field}`;
 
 function readProfileData(id: string): ProfileData {
   try {
     const ratings = JSON.parse(window.localStorage.getItem(profileKey(id, "ratings")) ?? "{}") as Record<number, number>;
     const savedGenres = JSON.parse(window.localStorage.getItem(profileKey(id, "genres")) ?? "[]") as string[];
     const savedView = window.localStorage.getItem(profileKey(id, "view")) as AppView | null;
+    const savedCard = Number(window.localStorage.getItem(profileKey(id, "card")) ?? 0);
     const view = savedView && ["discover", "ratings", "recommendations"].includes(savedView) ? savedView : Object.keys(ratings).length >= 5 ? "recommendations" : "discover";
-    return { ratings, genres: savedGenres, view };
+    return { ratings, genres: savedGenres, view, cardIndex: Number.isInteger(savedCard) && savedCard >= 0 ? savedCard : 0 };
   } catch {
-    return { ratings: {}, genres: [], view: "discover" };
+    return { ratings: {}, genres: [], view: "discover", cardIndex: 0 };
   }
 }
 
@@ -64,6 +117,7 @@ function writeProfileData(id: string, data: ProfileData) {
   window.localStorage.setItem(profileKey(id, "ratings"), JSON.stringify(data.ratings));
   window.localStorage.setItem(profileKey(id, "genres"), JSON.stringify(data.genres));
   window.localStorage.setItem(profileKey(id, "view"), data.view);
+  window.localStorage.setItem(profileKey(id, "card"), String(data.cardIndex));
 }
 
 function Icon({ name, className = "h-5 w-5" }: { name: "arrow" | "check" | "close" | "info" | "skip" | "spark" | "star"; className?: string }) {
@@ -119,7 +173,7 @@ export default function Home() {
         setProfiles(savedProfiles);
         if (savedProfile) {
           const data = readProfileData(savedProfile.id);
-          setActiveProfile(savedProfile); setRatings(data.ratings); setSelectedGenres(data.genres); setActiveView(data.view);
+          setActiveProfile(savedProfile); setRatings(data.ratings); setSelectedGenres(data.genres); setActiveView(data.view); setCurrentCard(data.cardIndex);
         } else {
           const legacyRatings = JSON.parse(window.localStorage.getItem("cinematch-ratings") ?? "{}") as Record<number, number>;
           const legacyGenres = JSON.parse(window.localStorage.getItem("cinematch-genres") ?? "[]") as string[];
@@ -136,6 +190,7 @@ export default function Home() {
   useEffect(() => { if (storageReady && activeProfile) window.localStorage.setItem(profileKey(activeProfile.id, "ratings"), JSON.stringify(ratings)); }, [ratings, storageReady, activeProfile]);
   useEffect(() => { if (storageReady && activeProfile) window.localStorage.setItem(profileKey(activeProfile.id, "genres"), JSON.stringify(selectedGenres)); }, [selectedGenres, storageReady, activeProfile]);
   useEffect(() => { if (storageReady && activeProfile) window.localStorage.setItem(profileKey(activeProfile.id, "view"), activeView); }, [activeView, storageReady, activeProfile]);
+  useEffect(() => { if (storageReady && activeProfile) window.localStorage.setItem(profileKey(activeProfile.id, "card"), String(currentCard)); }, [currentCard, storageReady, activeProfile]);
   useEffect(() => {
     if (!selectedMovie) return;
     const close = (event: KeyboardEvent) => { if (event.key === "Escape") setSelectedMovie(null); };
@@ -145,9 +200,11 @@ export default function Home() {
   }, [selectedMovie]);
 
   const rated = useMemo(() => Object.entries(ratings).map(([movieId, rating]) => ({ movieId: Number(movieId), rating })), [ratings]);
-  const onboardingFilms = useMemo(() => films.filter((film) => selectedGenres.includes(film.genre)), [selectedGenres]);
-  const visibleFilms = onboardingFilms.length ? onboardingFilms : films.slice(0, 14);
-  const tinderFilm = visibleFilms[currentCard % visibleFilms.length];
+  const visibleFilms = useMemo(() => [
+    ...films.filter((film) => selectedGenres.includes(film.genre)),
+    ...films.filter((film) => !selectedGenres.includes(film.genre)),
+  ], [selectedGenres]);
+  const tinderFilm = visibleFilms[currentCard];
   const progress = Math.min(100, (rated.length / 5) * 100);
 
   const loadCatalog = useCallback(async (ids: number[]) => {
@@ -162,7 +219,7 @@ export default function Home() {
       setCatalog(catalogRef.current);
     } catch { /* Visual fallbacks keep the app usable offline. */ }
   }, []);
-  useEffect(() => { void loadCatalog(films.map((film) => film.id)); }, [loadCatalog]);
+  useEffect(() => { void loadCatalog(visibleFilms.slice(currentCard, currentCard + 8).map((film) => film.id)); }, [loadCatalog, visibleFilms, currentCard]);
 
   const discover = useCallback(async (nextRatings: Record<number, number>, navigateToResults = false) => {
     const payload = Object.entries(nextRatings).map(([movieId, rating]) => ({ movieId: Number(movieId), rating }));
@@ -196,30 +253,30 @@ export default function Home() {
     setCardMotion(direction);
     window.setTimeout(() => { setCurrentCard((current) => current + 1); setCardMotion(null); }, 260);
   }
-  function rateAndAdvance(value: number) { rate(tinderFilm.id, value); advance("right"); }
+  function rateAndAdvance(value: number) { if (tinderFilm) { rate(tinderFilm.id, value); advance("right"); } }
   function viewForRecommendation(movie: Recommendation): MovieView {
     return { id: movie.id, title: cleanTitle(movie.title), genre: catalog[movie.id]?.genres.join(" · ") || "Selección CineMatch", blurb: catalog[movie.id]?.overview || "Una recomendación encontrada al cruzar tus valoraciones con los patrones de la comunidad MovieLens.", tint: fallbackTints[movie.id % fallbackTints.length], reason: movie.reason, communityRating: movie.rating, count: movie.count };
   }
   function selectProfile(profile: LocalProfile) {
-    if (activeProfile) writeProfileData(activeProfile.id, { ratings, genres: selectedGenres, view: activeView });
+    if (activeProfile) writeProfileData(activeProfile.id, { ratings, genres: selectedGenres, view: activeView, cardIndex: currentCard });
     const data = readProfileData(profile.id);
     window.localStorage.setItem("cinematch-active-profile", profile.id);
     restoreAttempted.current = false;
-    setActiveProfile(profile); setRatings(data.ratings); setSelectedGenres(data.genres); setActiveView(data.view);
-    setRecommendations([]); setHasDiscovered(false); setCurrentCard(0); setSelectedMovie(null); setProfileDialogOpen(false);
+    setActiveProfile(profile); setRatings(data.ratings); setSelectedGenres(data.genres); setActiveView(data.view); setCurrentCard(data.cardIndex);
+    setRecommendations([]); setHasDiscovered(false); setSelectedMovie(null); setProfileDialogOpen(false);
   }
   function createProfile(name: string) {
     const profile = { id: crypto.randomUUID(), name: name.trim() };
     const nextProfiles = [...profiles, profile];
     const carryLegacyData = profiles.length === 0 && !activeProfile;
-    const data: ProfileData = carryLegacyData ? { ratings, genres: selectedGenres, view: activeView } : { ratings: {}, genres: [], view: "discover" };
+    const data: ProfileData = carryLegacyData ? { ratings, genres: selectedGenres, view: activeView, cardIndex: currentCard } : { ratings: {}, genres: [], view: "discover", cardIndex: 0 };
     writeProfileData(profile.id, data);
     window.localStorage.setItem("cinematch-profiles", JSON.stringify(nextProfiles));
     window.localStorage.setItem("cinematch-active-profile", profile.id);
     if (carryLegacyData) {
       window.localStorage.removeItem("cinematch-ratings"); window.localStorage.removeItem("cinematch-genres"); window.localStorage.removeItem("cinematch-view");
     }
-    setProfiles(nextProfiles); setActiveProfile(profile); setRatings(data.ratings); setSelectedGenres(data.genres); setActiveView(data.view);
+    setProfiles(nextProfiles); setActiveProfile(profile); setRatings(data.ratings); setSelectedGenres(data.genres); setActiveView(data.view); setCurrentCard(data.cardIndex);
     setRecommendations([]); setHasDiscovered(false); restoreAttempted.current = false; setProfileDialogOpen(false);
   }
 
@@ -230,7 +287,7 @@ export default function Home() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_28%,rgba(97,74,180,.22),transparent_34%),linear-gradient(180deg,#080812_0%,#0c0c19_58%,#080812_100%)]" />
       <div className="relative mx-auto max-w-6xl">
         <div className="mx-auto max-w-2xl text-center"><p className="eyebrow">Tu primera selección</p><h1 className="mt-3 text-3xl font-semibold tracking-[-.04em] sm:text-5xl">Una película. Una impresión.</h1><p className="mx-auto mt-3 hidden max-w-xl text-sm leading-6 text-white/55 sm:block sm:text-base">Puntúa solo las que conozcas. Cada gesto afina tu perfil y cambia lo que viene después.</p></div>
-        <div className="mx-auto mt-5 grid max-w-4xl items-center gap-5 sm:mt-8 sm:gap-7 lg:grid-cols-[minmax(280px,390px)_1fr] lg:gap-14">
+        {tinderFilm ? <div className="mx-auto mt-5 grid max-w-4xl items-center gap-5 sm:mt-8 sm:gap-7 lg:grid-cols-[minmax(280px,390px)_1fr] lg:gap-14">
           <div className={`relative mx-auto w-full max-w-[250px] sm:max-w-[350px] ${cardMotion === "left" ? "card-exit-left" : cardMotion === "right" ? "card-exit-right" : "card-enter"}`} key={tinderFilm.id}>
             <div className="absolute inset-4 translate-y-4 rounded-[1.8rem] border border-white/8 bg-[#18172a] opacity-55" />
             <button type="button" onClick={() => setSelectedMovie(tinderFilm)} className="group relative block aspect-[2/3] w-full overflow-hidden rounded-[1.6rem] border border-white/15 text-left shadow-[0_30px_80px_rgba(0,0,0,.5)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b9adff]">
@@ -240,14 +297,14 @@ export default function Home() {
             </button>
           </div>
           <div className="mx-auto w-full max-w-md lg:mx-0">
-            <div className="flex items-end justify-between gap-5"><div><p className="eyebrow">Construyendo tu perfil</p><p className="mt-2 text-lg font-medium">{rated.length < 5 ? `${rated.length} de 5 valoraciones` : "Tu perfil ya está listo"}</p></div><span className="text-sm tabular-nums text-white/40">{currentCard % visibleFilms.length + 1} / {visibleFilms.length}</span></div>
+            <div className="flex items-end justify-between gap-5"><div><p className="eyebrow">Construyendo tu perfil</p><p className="mt-2 text-lg font-medium">{rated.length < 5 ? `${rated.length} de 5 valoraciones` : "Tu perfil ya está listo"}</p></div><span className="text-xs text-white/35">Tus géneros primero</span></div>
             <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-[#8170df] to-[#e8c77a] transition-[width] duration-500" style={{ width: `${progress}%` }} /></div>
             <div className="mt-4 rounded-2xl border border-white/10 bg-white/[.045] p-4 sm:mt-8 sm:p-6"><p className="text-center text-sm text-white/55">¿Qué te pareció?</p><div className="mt-2 flex justify-center sm:mt-3"><RatingStars value={ratings[tinderFilm.id]} onRate={rateAndAdvance} large /></div><div className="mt-3 grid grid-cols-2 gap-3 sm:mt-5"><button type="button" onClick={() => advance("left")} className="secondary-action"><Icon name="skip" className="h-5 w-5" /> {ratings[tinderFilm.id] ? "Siguiente película" : "No la he visto"}</button><button type="button" onClick={() => setSelectedMovie(tinderFilm)} className="secondary-action"><Icon name="info" className="h-5 w-5" /> Ver ficha</button></div></div>
             {rated.length >= 5 ? <button type="button" disabled={loading} onClick={() => void discover(ratings, true)} className="primary-action mt-5 w-full">{loading ? "Buscando afinidades…" : <><Icon name="spark" className="h-5 w-5" /> Revelar mis recomendaciones</>}</button> : <p className="mt-5 text-center text-xs leading-5 text-white/40">Te faltan {5 - rated.length} valoraciones. Puedes pasar todas las películas que no conozcas.</p>}
             {error && <p role="alert" className="mt-4 text-center text-sm text-rose-300">{error}</p>}
             <button type="button" onClick={() => setActiveView("discover")} className="mx-auto mt-5 block text-xs text-white/35 underline-offset-4 hover:text-white hover:underline">Cambiar géneros</button>
           </div>
-        </div>
+        </div> : <div className="mx-auto mt-12 max-w-xl rounded-3xl border border-white/10 bg-white/[.04] p-8 text-center sm:p-10"><span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#7161bd]/25 text-[#c8beff]"><Icon name="check" /></span><p className="eyebrow mt-6">Selección completada</p><h2 className="mt-3 text-3xl font-semibold tracking-[-.04em]">Has recorrido todas las películas</h2><p className="mt-3 text-sm leading-6 text-white/50">No volveremos a enseñarte las mismas desde el principio. Puedes ampliar tus géneros o pasar ya a tu selección personalizada.</p><div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">{rated.length >= 5 && <button type="button" disabled={loading} onClick={() => void discover(ratings, true)} className="primary-action"><Icon name="spark" className="h-5 w-5" /> Ver mis recomendaciones</button>}<button type="button" onClick={() => setActiveView("discover")} className="secondary-action">Ampliar géneros</button></div></div>}
       </div>
     </section>}
     {activeView === "recommendations" && <RecommendationsView recommendations={recommendations} catalog={catalog} ratings={ratings} loading={loading} error={error} onRefresh={() => void discover(ratings)} onOpen={(movie) => setSelectedMovie(viewForRecommendation(movie))} onRate={rate} />}
