@@ -301,7 +301,7 @@ export default function Home() {
     setRatedConfirmation({ title: selectedMovie.title, rating: value });
     setSelectedMovie(null);
     if (confirmationTimer.current) window.clearTimeout(confirmationTimer.current);
-    confirmationTimer.current = window.setTimeout(() => setRatedConfirmation(null), 1800);
+    confirmationTimer.current = window.setTimeout(() => setRatedConfirmation(null), 1100);
   }
 
   return <main className="min-h-screen overflow-x-hidden bg-[#080812] pb-16 text-[#f7f1e7] sm:pb-0">
@@ -422,7 +422,7 @@ function CompactFilmCard({ film, metadata, rating, onOpen, onRate }: { film: Fil
 }
 
 function RatingConfirmation({ title, rating }: { title: string; rating: number }) {
-  return <div className="pointer-events-none fixed inset-0 z-[55] grid place-items-center bg-[#05050c]/72 p-5 backdrop-blur-md"><div className="recommendation-confirmation w-full max-w-sm rounded-3xl border border-[#e8c77a]/25 bg-[#12121f] p-8 text-center shadow-[0_35px_120px_rgba(0,0,0,.75)]"><div className="relative mx-auto grid h-20 w-20 place-items-center rounded-full border border-[#e8c77a]/35 bg-[radial-gradient(circle,rgba(232,199,122,.2),rgba(143,125,232,.08))] text-[#e8c77a] shadow-[0_0_45px_rgba(232,199,122,.18)]"><Icon name="check" className="h-8 w-8" /><span className="absolute -right-2 -top-1 rounded-full bg-[#e8c77a] px-2 py-1 text-xs font-black text-[#12121f]">{rating}★</span></div><p className="eyebrow mt-6">Perfil actualizado</p><h2 className="mt-3 text-2xl font-semibold tracking-[-.04em]">{title}</h2><p className="mt-3 text-sm leading-6 text-white/45">Valoración guardada. Tu selección se está reordenando con esta nueva señal.</p><div className="mx-auto mt-6 h-1 w-32 overflow-hidden rounded-full bg-white/8"><div className="confirmation-progress h-full rounded-full bg-gradient-to-r from-[#9f8cff] to-[#e8c77a]" /></div></div></div>;
+  return <div className="pointer-events-none fixed inset-0 z-[55] grid place-items-center bg-[#05050c]/28 p-5 backdrop-blur-[2px]" role="status" aria-live="polite"><div className="reward-confirmation text-center"><div className="relative mx-auto h-32 w-32"><span className="reward-ring absolute inset-6 rounded-full border border-[#e8c77a]/60" /><span className="reward-spark absolute left-1/2 top-0 text-xl text-[#e8c77a]" style={{ animationDelay: "40ms" }}>✦</span><span className="reward-spark absolute right-0 top-7 text-sm text-[#b9adff]" style={{ animationDelay: "100ms" }}>✦</span><span className="reward-spark absolute bottom-5 right-2 text-lg text-[#e8c77a]" style={{ animationDelay: "160ms" }}>✦</span><span className="reward-spark absolute bottom-0 left-7 text-xs text-[#b9adff]" style={{ animationDelay: "220ms" }}>✦</span><span className="reward-spark absolute left-0 top-10 text-base text-[#e8c77a]" style={{ animationDelay: "130ms" }}>✦</span><span className="reward-core absolute inset-8 grid place-items-center rounded-full bg-[#e8c77a] text-[#11111d] shadow-[0_0_55px_rgba(232,199,122,.55)]"><Icon name="check" className="h-8 w-8" /></span><span className="reward-score absolute -right-1 bottom-5 rounded-full border border-white/20 bg-[#7161bd] px-2.5 py-1 text-xs font-black text-white shadow-lg">{rating}★</span></div><p className="mt-2 text-xl font-semibold">¡Valorada!</p><p className="mt-1 max-w-xs truncate text-sm text-white/48">{title}</p></div></div>;
 }
 
 function MovieModal({ movie, metadata, rating, onRate, onClose }: { movie: MovieView; metadata?: CatalogMovie; rating?: number; onRate: (value: number) => void; onClose: () => void }) {
