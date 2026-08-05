@@ -32,10 +32,12 @@ button:disabled { cursor: not-allowed; }
 .card-enter { animation: card-enter .38s cubic-bezier(.2,.75,.25,1) both; }
 .card-exit-left { animation: card-exit-left .28s ease-in both; }
 .card-exit-right { animation: card-exit-right .28s ease-in both; }
+.rating-confirmation { animation: rating-confirmation .42s cubic-bezier(.2,.8,.25,1) both; }
 
 @keyframes card-enter { from { opacity: 0; transform: translateY(14px) scale(.97) rotate(-1deg); } to { opacity: 1; transform: translateY(0) scale(1) rotate(0); } }
 @keyframes card-exit-left { to { opacity: 0; transform: translateX(-28%) rotate(-6deg) scale(.96); } }
 @keyframes card-exit-right { to { opacity: 0; transform: translateX(28%) rotate(6deg) scale(.96); } }
+@keyframes rating-confirmation { from { opacity: 0; transform: scale(.96); } 55% { opacity: 1; transform: scale(1.015); } to { opacity: 1; transform: scale(1); } }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
