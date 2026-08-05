@@ -301,7 +301,7 @@ export default function Home() {
     setRatedConfirmation({ title: selectedMovie.title, rating: value });
     setSelectedMovie(null);
     if (confirmationTimer.current) window.clearTimeout(confirmationTimer.current);
-    confirmationTimer.current = window.setTimeout(() => setRatedConfirmation(null), 1800);
+    confirmationTimer.current = window.setTimeout(() => setRatedConfirmation(null), 2500);
   }
 
   return <main className="min-h-screen overflow-x-hidden bg-[#080812] pb-16 text-[#f7f1e7] sm:pb-0">
