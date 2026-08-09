@@ -1,35 +1,259 @@
 import json
 from pathlib import Path
 
+
 OUT = Path(__file__).resolve().parents[1] / "notebooks" / "Caso_Practico_RS_Carlos_Galan.ipynb"
+
 
 def md(text):
     return {"cell_type": "markdown", "metadata": {}, "source": [text]}
 
+
 def code(text):
     return {"cell_type": "code", "execution_count": None, "metadata": {}, "outputs": [], "source": [text]}
 
+
 cells = [
-md("""# Caso Práctico 1: Motor de recomendación de películas\n\nEn este caso práctico vamos a construir un motor de recomendación usando las valoraciones de usuarios de una plataforma de películas.\n\nLa idea es empezar por recomendaciones populares, que sirven para cualquier usuario nuevo, y después probar dos formas de filtrado colaborativo: buscar usuarios con gustos similares y buscar películas que suelen gustar a las mismas personas. Finalmente los uniremos en un recomendador híbrido, que es lo que tendría sentido en una plataforma real.\n"""),
-md("""## 1. Imports y carga de los datos\n\nLos ficheros aportados contienen las valoraciones y el catálogo de películas. `file.tsv` no tiene cabecera, pero sus columnas son usuario, película, puntuación y fecha. La fecha no nos aporta información para este caso, así que la dejaremos fuera del modelo.\n"""),
-code("""import zipfile\nfrom pathlib import Path\n\nimport numpy as np\nimport pandas as pd\nimport matplotlib.pyplot as plt\nimport seaborn as sns\nfrom google.colab import files\n\nRANDOM_STATE = 7\nnp.random.seed(RANDOM_STATE)\nsns.set_theme(style='whitegrid', palette='mako')\n\nARCHIVO_ZIP = 'Ficheros_caso1.zip'\nif not Path(ARCHIVO_ZIP).exists():\n    print('Sube el archivo Ficheros_caso1.zip')\n    ARCHIVO_ZIP = next(iter(files.upload()))\n\nwith zipfile.ZipFile(ARCHIVO_ZIP) as z:\n    with z.open('Ficheros/file.tsv') as f:\n        valoraciones = pd.read_csv(f, sep='\\t', names=['usuario_id', 'pelicula_id', 'rating', 'timestamp'])\n    with z.open('Ficheros/Movie_Id_Titles.csv') as f:\n        peliculas = pd.read_csv(f)\n\ndatos = (valoraciones.drop(columns='timestamp')\n         .merge(peliculas, left_on='pelicula_id', right_on='item_id', how='left')\n         .drop(columns='item_id'))\nprint(f'Valoraciones: {len(datos):,} | Usuarios: {datos.usuario_id.nunique():,} | Películas: {datos.pelicula_id.nunique():,}')\ndatos.head()\n"""),
-md("""## 2. Exploración inicial y popularidad\n\nAntes de recomendar nada, vamos a comprobar cómo se comportan las valoraciones. En este tipo de datos hay muchas películas con pocos votos: una media alta con dos valoraciones no es tan fiable como una media algo más baja con cientos de ellas.\n\nEl enfoque de popularidad que pide el enunciado ordena por número de valoraciones. También vamos a calcular una puntuación ponderada para que el ranking sea algo más robusto. Este será nuestro punto de partida para el problema de *cold start*.\n"""),
-code("""resumen = (datos.groupby(['pelicula_id', 'title']).rating\n           .agg(media='mean', num_valoraciones='count')\n           .sort_values('num_valoraciones', ascending=False))\nmedia_global = datos.rating.mean()\nminimo_votos = resumen.num_valoraciones.quantile(.75)\npopularidad = resumen.query('num_valoraciones >= @minimo_votos').copy()\npopularidad['puntuacion_ponderada'] = (popularidad.num_valoraciones / (popularidad.num_valoraciones + minimo_votos) * popularidad.media\n                                        + minimo_votos / (popularidad.num_valoraciones + minimo_votos) * media_global)\ntop_populares = popularidad.sort_values('num_valoraciones', ascending=False).head(12)\ntop_ponderadas = popularidad.sort_values('puntuacion_ponderada', ascending=False).head(12)\n\nfig, axes = plt.subplots(1, 2, figsize=(16, 7))\nsns.barplot(data=top_populares.reset_index(), y='title', x='num_valoraciones', ax=axes[0], color='#315B7D')\naxes[0].set_title('Películas más populares')\nsns.barplot(data=top_ponderadas.reset_index(), y='title', x='puntuacion_ponderada', ax=axes[1], color='#856084')\naxes[1].set_title('Mejor puntuación ponderada')\nplt.tight_layout()\ntop_ponderadas[['media', 'num_valoraciones', 'puntuacion_ponderada']]\n"""),
-md("""## 3. Matriz usuario-película\n\nPara los dos métodos colaborativos necesitamos reorganizar los datos en una matriz. Cada fila será un usuario, cada columna una película y cada celda su puntuación. Los huecos no significan una puntuación de cero: simplemente indican que ese usuario no ha visto esa película.\n"""),
-code("""matriz_usuario_pelicula = datos.pivot_table(index='usuario_id', columns='title', values='rating')\nprint('Dimensiones:', matriz_usuario_pelicula.shape)\nprint(f'Porcentaje sin valorar: {matriz_usuario_pelicula.isna().mean().mean():.2%}')\nmatriz_usuario_pelicula.iloc[:5, :8]\n"""),
-md("""## 4. Filtrado colaborativo basado en usuarios\n\nAquí buscamos usuarios que hayan puntuado de una forma parecida. Voy a usar correlación de Pearson porque no todos usamos la misma escala: hay personas que puntúan casi todo alto y otras que son más exigentes. Pearson se fija más en el patrón relativo.\n\nPara no llamar parecidos a dos usuarios que solo coinciden en una película, exigimos un mínimo de 20 valoraciones comunes. Después, las notas de los vecinos se combinan con un promedio ponderado: quien se parece más al usuario objetivo influye más.\n"""),
-code("""def recomendar_por_usuarios(usuario_id, top_n=10, minimo_comun=20):\n    objetivo = matriz_usuario_pelicula.loc[usuario_id]\n    comunes = matriz_usuario_pelicula.notna().dot(objetivo.notna())\n    similitud = matriz_usuario_pelicula.corrwith(objetivo, axis=1, min_periods=minimo_comun).dropna()\n    vecinos = similitud[comunes.loc[similitud.index] >= minimo_comun].sort_values(ascending=False).head(25)\n    predicciones = {}\n    for titulo in objetivo[objetivo.isna()].index:\n        notas = matriz_usuario_pelicula.loc[vecinos.index, titulo].dropna()\n        pesos = vecinos.loc[notas.index]\n        if len(notas) >= 2 and pesos.abs().sum() > 0:\n            predicciones[titulo] = np.average(notas, weights=pesos.abs())\n    return pd.DataFrame.from_dict(predicciones, orient='index', columns=['prediccion']).sort_values('prediccion', ascending=False).head(top_n), vecinos\n\nUSUARIO_EJEMPLO = 196\nrecomendaciones_usuario, vecinos = recomendar_por_usuarios(USUARIO_EJEMPLO)\ndisplay(vecinos.head(8).rename('correlacion').to_frame())\nrecomendaciones_usuario\n"""),
-md("""## 5. Filtrado colaborativo basado en ítems\n\nEn vez de preguntar qué personas se parecen al usuario, ahora preguntamos qué películas reciben valoraciones parecidas. Este enfoque suele ser más estable cuando todavía hay pocas valoraciones de una persona nueva, y además permite explicar una sugerencia concreta: “te recomendamos esto porque te gustó aquello”.\n"""),
-code("""matriz_pelicula_usuario = matriz_usuario_pelicula.T\n\ndef peliculas_similares(titulo, top_n=10, minimo_comun=50):\n    objetivo = matriz_pelicula_usuario.loc[titulo]\n    comunes = matriz_pelicula_usuario.notna().dot(objetivo.notna())\n    similitud = matriz_pelicula_usuario.corrwith(objetivo, axis=1, min_periods=minimo_comun).dropna()\n    resultado = pd.DataFrame({'similitud': similitud, 'valoraciones_comunes': comunes.loc[similitud.index]})\n    return resultado.query('valoraciones_comunes >= @minimo_comun').drop(index=titulo, errors='ignore').sort_values('similitud', ascending=False).head(top_n)\n\nPELICULA_EJEMPLO = 'Star Wars (1977)'\npeliculas_similares(PELICULA_EJEMPLO)\n"""),
-md("""## 6. Recomendador ítem-ítem personalizado\n\nAhora sí vamos a construir una función que serviría en la aplicación. Si una persona ha puntuado varias películas, calculamos similares a cada una y multiplicamos esa similitud por la nota que dio. Por eso una película parecida a algo valorado con 5 pesa más que una parecida a algo valorado con 2.\n"""),
-code("""def recomendar_por_items(usuario_id, top_n=10, minimo_comun=50):\n    historial = matriz_usuario_pelicula.loc[usuario_id].dropna()\n    acumulado, pesos = pd.Series(dtype=float), pd.Series(dtype=float)\n    for titulo, rating in historial.items():\n        similares = peliculas_similares(titulo, top_n=80, minimo_comun=minimo_comun)\n        acumulado = acumulado.add(similares.similitud * rating, fill_value=0)\n        pesos = pesos.add(similares.similitud.abs(), fill_value=0)\n    score = (acumulado / pesos).dropna().drop(historial.index, errors='ignore')\n    return score.sort_values(ascending=False).head(top_n).rename('score_item_item').to_frame()\n\nrecomendaciones_items = recomendar_por_items(USUARIO_EJEMPLO)\nrecomendaciones_items\n"""),
-md("""## 7. Comparación y evaluación sencilla\n\nLos tres métodos responden a preguntas distintas. Popularidad sirve para todo el mundo; usuario-usuario aprovecha el comportamiento de gente parecida; e ítem-ítem explica bien una sugerencia mediante películas ya conocidas.\n\nPara comprobar si el último enfoque tiene sentido más allá de ver ejemplos bonitos, ocultamos una valoración positiva de una muestra de usuarios y comprobamos si aparece entre las cinco sugerencias. No es una evaluación perfecta: el dataset solo registra películas que una persona ha visto y decidido puntuar, no todas las que podría haber disfrutado.\n"""),
-code("""fig, axes = plt.subplots(1, 3, figsize=(20, 7))\ndef grafico(tabla, columna, titulo, ax, color):\n    mostrar = tabla.head(8).sort_values(columna)\n    ax.barh(mostrar.index, mostrar[columna], color=color)\n    ax.set_title(titulo)\n\ngrafico(top_ponderadas, 'puntuacion_ponderada', 'Popularidad ponderada', axes[0], '#315B7D')\ngrafico(recomendaciones_usuario, 'prediccion', 'Usuarios similares', axes[1], '#D07A93')\ngrafico(recomendaciones_items, 'score_item_item', 'Películas similares', axes[2], '#856084')\nplt.tight_layout()\n"""),
-md("""## 8. Recomendador híbrido y conclusiones\n\nEn una aplicación no tendría sentido obligar a elegir un único método. Un usuario que acaba de entrar no tiene historial, así que empezaría viendo las películas populares. Tras cinco o seis valoraciones, daríamos más peso al filtrado basado en ítems y usaríamos también usuarios similares como señal complementaria.\n\nPrimero normalizamos el ranking de cada método y después aplicamos pesos. Con poco historial podríamos usar 45 % popularidad, 40 % ítems y 15 % usuarios. Con más de seis ratings, 10 % popularidad, 55 % ítems y 35 % usuarios.\n\nEn conclusión, el filtrado por popularidad resuelve bien el inicio de un usuario nuevo, mientras que los dos métodos colaborativos aportan personalización. El basado en ítems me parece el más útil para este dataset: es fácil de explicar y puede funcionar con un historial pequeño. Esta es la lógica que he trasladado a CineMatch, la pequeña plataforma complementaria del caso. Como mejora futura, añadiría géneros, pósteres y datos más actuales, ya que el catálogo está centrado sobre todo en películas de los años 90.\n"""),
-code("""def normalizar(serie):\n    return pd.Series(1.0, index=serie.index) if serie.max() == serie.min() else (serie - serie.min()) / (serie.max() - serie.min())\n\ndef recomendador_hibrido(usuario_id, top_n=10):\n    historial = matriz_usuario_pelicula.loc[usuario_id].dropna()\n    popular = normalizar(top_ponderadas.puntuacion_ponderada)\n    usuarios = normalizar(recomendar_por_usuarios(usuario_id, 80)[0].prediccion)\n    items = normalizar(recomendar_por_items(usuario_id, 80).score_item_item)\n    pesos = {'popularidad': .45, 'usuarios': .15, 'items': .40} if len(historial) < 6 else {'popularidad': .10, 'usuarios': .35, 'items': .55}\n    combinado = pesos['popularidad'] * popular\n    combinado = combinado.add(pesos['usuarios'] * usuarios, fill_value=0).add(pesos['items'] * items, fill_value=0)\n    return combinado.drop(historial.index, errors='ignore').sort_values(ascending=False).head(top_n).rename('score_hibrido').to_frame(), pesos\n\nrecomendaciones_hibridas, pesos = recomendador_hibrido(USUARIO_EJEMPLO)\nprint('Pesos utilizados:', pesos)\nrecomendaciones_hibridas\n"""),
+md("""# Caso Práctico 1: Motor de recomendación de películas
+
+En este caso práctico vamos a construir tres sistemas de recomendación utilizando las valoraciones de MovieLens.
+
+Primero veremos qué películas son las más populares. Después haremos filtrado colaborativo de dos formas: buscando usuarios con gustos parecidos y buscando películas que suelen recibir valoraciones similares. La idea es comparar los tres métodos y entender en qué situación tiene más sentido utilizar cada uno.
+"""),
+md("""## 1. Imports, carga y exploración de los datos
+
+Para este ejercicio no necesitamos demasiadas librerías. Usaremos `pandas` para preparar los datos y calcular las recomendaciones, y `matplotlib` para representar los resultados.
+
+Al ejecutar la siguiente celda seleccionamos a la vez `file.tsv` y `Movie_Id_Titles.csv`. Me parece más cómodo subir directamente los dos ficheros que tener que preparar antes un ZIP con una estructura concreta.
+"""),
+code("""import pandas as pd
+import matplotlib.pyplot as plt
+from google.colab import files
+
+# Subimos directamente los dos ficheros que nos dan para el ejercicio.
+files.upload()
+
+valoraciones = pd.read_csv(
+    'file.tsv',
+    sep='\\t',
+    names=['usuario_id', 'pelicula_id', 'rating', 'timestamp']
+)
+peliculas = pd.read_csv('Movie_Id_Titles.csv')
+
+# Unimos valoraciones y títulos. La fecha no aporta nada a estos filtros.
+datos = (valoraciones.drop(columns='timestamp')
+         .merge(peliculas, left_on='pelicula_id', right_on='item_id', how='left')
+         .drop(columns='item_id'))
+
+print(f'Valoraciones: {len(datos):,}')
+print(f'Usuarios: {datos.usuario_id.nunique():,}')
+print(f'Películas: {datos.pelicula_id.nunique():,}')
+print(f'Valores nulos: {datos.isna().sum().sum()}')
+datos.head()
+"""),
+md("""El dataset contiene el identificador del usuario, la película y una puntuación de 1 a 5. No tenemos información sobre género, edad o tipo de película, así que las recomendaciones dependerán únicamente de las valoraciones.
+
+Esto también significa que una celda vacía no equivale a una mala nota: simplemente no sabemos si ese usuario ha visto la película.
+"""),
+md("""## 2. Recomendación basada en popularidad
+
+Empezamos por el método más sencillo. Consideraremos más popular la película que haya recibido más valoraciones, tal y como pide el enunciado.
+
+También mostraremos la nota media para tener algo de contexto, pero no la utilizaremos para ordenar. Una película con muchos votos no tiene por qué ser la mejor valorada; simplemente es la que más usuarios han puntuado.
+"""),
+code("""popularidad = (datos.groupby(['pelicula_id', 'title']).rating
+               .agg(num_valoraciones='count', nota_media='mean')
+               .sort_values('num_valoraciones', ascending=False))
+
+top_populares = popularidad.head(10)
+display(top_populares)
+
+mostrar = top_populares.sort_values('num_valoraciones')
+plt.figure(figsize=(10, 6))
+plt.barh(mostrar.index.get_level_values('title'), mostrar.num_valoraciones, color='#315B7D')
+plt.title('Películas más populares')
+plt.xlabel('Número de valoraciones')
+plt.tight_layout()
+plt.show()
+"""),
+md("""Este método funciona bien para un usuario nuevo porque no necesita saber nada sobre él. El problema es que devuelve prácticamente la misma lista para todo el mundo y favorece siempre a las películas más conocidas.
+"""),
+md("""## 3. Matriz usuario-película
+
+Para los dos filtros colaborativos necesitamos convertir los datos en una matriz. Cada fila representa a un usuario, cada columna una película y cada celda contiene la valoración.
+
+Vamos a mantener los valores vacíos como `NaN`. Rellenarlos con cero sería asumir que el usuario ha visto la película y le ha puesto la peor nota, y eso cambiaría completamente el significado de los datos.
+"""),
+code("""matriz_usuario_pelicula = datos.pivot_table(
+    index='usuario_id',
+    columns='title',
+    values='rating'
+)
+
+porcentaje_vacio = matriz_usuario_pelicula.isna().mean().mean()
+print('Dimensiones:', matriz_usuario_pelicula.shape)
+print(f'Porcentaje sin valorar: {porcentaje_vacio:.2%}')
+matriz_usuario_pelicula.iloc[:5, :8]
+"""),
+md("""## 4. Filtrado colaborativo basado en usuarios
+
+En este caso buscamos usuarios que hayan puntuado de forma parecida. Usaremos correlación de Pearson porque está contemplada en el enunciado y `pandas` permite calcularla directamente.
+
+La correlación se calcula solo sobre películas que ambos usuarios hayan valorado. Además, exigimos un mínimo de 20 coincidencias para no decidir que dos personas se parecen porque han puntuado igual una o dos películas. Nos quedaremos con los 20 vecinos más cercanos y combinaremos sus notas mediante una media ponderada.
+"""),
+code("""def recomendar_por_usuarios(usuario_id, top_n=10, minimo_comun=20):
+    objetivo = matriz_usuario_pelicula.loc[usuario_id]
+
+    # Buscamos correlaciones positivas y eliminamos al propio usuario.
+    similitudes = (matriz_usuario_pelicula
+                   .corrwith(objetivo, axis=1, min_periods=minimo_comun)
+                   .drop(index=usuario_id, errors='ignore')
+                   .dropna())
+    vecinos = similitudes[similitudes > 0].sort_values(ascending=False).head(20)
+
+    predicciones = []
+    for titulo in objetivo[objetivo.isna()].index:
+        notas = matriz_usuario_pelicula.loc[vecinos.index, titulo].dropna()
+        pesos = vecinos.loc[notas.index]
+        if len(notas) >= 2 and pesos.sum() > 0:
+            predicciones.append({
+                'title': titulo,
+                'prediccion': (notas * pesos).sum() / pesos.sum(),
+                'vecinos_que_la_valoran': len(notas)
+            })
+
+    return (pd.DataFrame(predicciones)
+            .sort_values(['prediccion', 'vecinos_que_la_valoran'], ascending=False)
+            .head(top_n)), vecinos
+
+USUARIO_EJEMPLO = 196
+recomendaciones_usuario, vecinos = recomendar_por_usuarios(USUARIO_EJEMPLO)
+
+print(f'Vecinos utilizados: {len(vecinos)}')
+display(recomendaciones_usuario)
+
+mostrar = recomendaciones_usuario.sort_values('prediccion')
+plt.figure(figsize=(10, 6))
+plt.barh(mostrar.title, mostrar.prediccion, color='#D07A93')
+plt.title(f'Recomendaciones para el usuario {USUARIO_EJEMPLO} basadas en usuarios similares')
+plt.xlabel('Valoración estimada')
+plt.xlim(0, 5)
+plt.tight_layout()
+plt.show()
+"""),
+md("""Ahora sí obtenemos una lista personalizada. Dos usuarios pueden recibir resultados diferentes porque sus vecinos también serán diferentes.
+
+La principal limitación es que necesitamos suficientes películas en común para calcular una correlación fiable. Si el usuario acaba de llegar o tiene gustos muy poco habituales, puede que no encontremos vecinos útiles.
+"""),
+md("""## 5. Filtrado colaborativo basado en ítems
+
+El tercer método compara películas en lugar de personas. La lógica es sencilla: si dos películas suelen recibir notas parecidas de los mismos usuarios, consideramos que están relacionadas.
+
+Volvemos a usar Pearson y exigimos al menos 50 valoraciones comunes. Para construir la lista personalizada partimos de las películas que el usuario ha puntuado con 4 o 5 y buscamos títulos similares. Personalmente, este método me parece más fácil de explicar porque podemos decir directamente qué película del historial ha provocado cada recomendación.
+"""),
+code("""matriz_pelicula_usuario = matriz_usuario_pelicula.T
+
+def peliculas_similares(titulo, top_n=100, minimo_comun=50):
+    objetivo = matriz_pelicula_usuario.loc[titulo]
+    similitudes = (matriz_pelicula_usuario
+                   .corrwith(objetivo, axis=1, min_periods=minimo_comun)
+                   .drop(index=titulo, errors='ignore')
+                   .dropna())
+    return similitudes[similitudes > 0].sort_values(ascending=False).head(top_n)
+
+def recomendar_por_items(usuario_id, top_n=10):
+    historial = matriz_usuario_pelicula.loc[usuario_id].dropna()
+    favoritas = historial[historial >= 4]
+    candidatos = {}
+
+    # Cada película favorita aporta candidatos según su similitud.
+    for titulo, rating in favoritas.items():
+        for candidata, similitud in peliculas_similares(titulo).items():
+            if candidata in historial.index:
+                continue
+            fila = candidatos.setdefault(
+                candidata,
+                {'suma': 0, 'peso': 0, 'porque': titulo, 'mejor_aporte': 0}
+            )
+            aporte = similitud * rating
+            fila['suma'] += aporte
+            fila['peso'] += similitud
+            if aporte > fila['mejor_aporte']:
+                fila['porque'] = titulo
+                fila['mejor_aporte'] = aporte
+
+    recomendaciones = [
+        {
+            'title': titulo,
+            'score_item_item': fila['suma'] / fila['peso'],
+            'porque': fila['porque']
+        }
+        for titulo, fila in candidatos.items()
+        if fila['peso'] > 0
+    ]
+    return (pd.DataFrame(recomendaciones)
+            .sort_values('score_item_item', ascending=False)
+            .head(top_n))
+
+recomendaciones_items = recomendar_por_items(USUARIO_EJEMPLO)
+display(recomendaciones_items)
+
+mostrar = recomendaciones_items.sort_values('score_item_item')
+plt.figure(figsize=(10, 6))
+plt.barh(mostrar.title, mostrar.score_item_item, color='#856084')
+plt.title(f'Recomendaciones para el usuario {USUARIO_EJEMPLO} basadas en películas similares')
+plt.xlabel('Score ítem-ítem')
+plt.xlim(0, 5)
+plt.tight_layout()
+plt.show()
+"""),
+md("""La columna `porque` hace que el resultado sea bastante transparente: podemos ver qué película ya valorada ha tenido más influencia en cada sugerencia.
+
+Este enfoque suele ser más estable que comparar usuarios, pero sigue dependiendo de que existan suficientes valoraciones comunes entre las películas. Los títulos menos conocidos van a tener más dificultades para aparecer.
+"""),
+md("""## 6. Comparación de los resultados
+
+No existe un método que sea siempre mejor. Cada uno resuelve una parte distinta del problema, así que vamos a resumir qué hemos obtenido y dónde falla cada enfoque.
+"""),
+code("""comparacion = pd.DataFrame({
+    'Método': ['Popularidad', 'Usuarios similares', 'Ítems similares'],
+    '¿Personaliza?': ['No', 'Sí', 'Sí'],
+    'Necesita historial': ['No', 'Sí, y coincidencias con otros usuarios', 'Sí, y películas con suficientes votos'],
+    'Punto fuerte': [
+        'Funciona desde la primera visita',
+        'Aprovecha gustos de personas parecidas',
+        'Es estable y permite explicar el motivo'
+    ],
+    'Limitación principal': [
+        'Recomienda lo mismo a todo el mundo',
+        'Sufre cuando hay pocas valoraciones comunes',
+        'Favorece películas con bastante historial'
+    ]
+})
+
+comparacion
+"""),
+md("""## 7. Conclusiones
+
+En este caso práctico hemos implementado los tres métodos que pedía el enunciado utilizando `pandas`. El ranking de popularidad es el más sencillo y funciona bien para arrancar, aunque no tiene ninguna personalización. El filtrado por usuarios sí adapta el resultado, pero necesita suficientes coincidencias para encontrar vecinos fiables.
+
+El filtrado basado en ítems es el que más me convence para este dataset. Además de personalizar, permite justificar cada resultado a partir de una película que el usuario ya ha valorado bien. Aun así, también tiene sesgo hacia los títulos con más información y no resuelve por sí solo el problema de un usuario completamente nuevo.
+
+Como ampliación he desarrollado CineMatch, una web que representa visualmente estos tres enfoques. La aplicación añade una mezcla híbrida con pesos dinámicos: al principio se apoya más en popularidad y, cuando el perfil acumula valoraciones, da más peso a usuarios e ítems similares. También incorpora perfiles locales y metadatos de TMDB. Estas mejoras no sustituyen los tres filtros del ejercicio; simplemente los combinan y los presentan de una forma más cercana a una aplicación real.
+"""),
 ]
 
-notebook = {"cells": cells, "metadata": {"colab": {"name": "Caso_Practico_RS_Carlos_Galan.ipynb"}, "kernelspec": {"display_name": "Python 3", "name": "python3"}, "language_info": {"name": "python"}}, "nbformat": 4, "nbformat_minor": 5}
+notebook = {
+    "cells": cells,
+    "metadata": {
+        "colab": {"name": "Caso_Practico_RS_Carlos_Galan.ipynb"},
+        "kernelspec": {"display_name": "Python 3", "name": "python3"},
+        "language_info": {"name": "python"},
+    },
+    "nbformat": 4,
+    "nbformat_minor": 5,
+}
+
 OUT.parent.mkdir(exist_ok=True)
 OUT.write_text(json.dumps(notebook, ensure_ascii=False, indent=1), encoding="utf-8")
 print(OUT)
