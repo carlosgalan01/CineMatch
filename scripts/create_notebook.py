@@ -22,9 +22,9 @@ Primero veremos qué películas son las más populares. Después haremos filtrad
 """),
 md("""## 1. Imports, carga y exploración de los datos
 
-Para este ejercicio no necesitamos demasiadas librerías. Usaremos `pandas` para preparar los datos, `numpy` para calcular la similitud coseno y `matplotlib` y `plotly` para representar los resultados.
+Vamos a usar `pandas` para preparar los datos, `numpy` para calcular la similitud coseno y `matplotlib` y `plotly` para representar los resultados.
 
-Al ejecutar la siguiente celda seleccionamos a la vez `file.tsv` y `Movie_Id_Titles.csv`. Me parece más cómodo subir directamente los dos ficheros que tener que preparar antes un ZIP con una estructura concreta.
+Al ejecutar la siguiente celda tenemos que seleccionar a la vez `file.tsv` y `Movie_Id_Titles.csv`.
 """),
 code("""import warnings
 import numpy as np
@@ -33,7 +33,7 @@ import matplotlib.pyplot as plt
 import plotly.express as px
 from google.colab import files
 
-# Subimos directamente los dos ficheros que nos dan para el ejercicio.
+# Subimos directamente los dos ficheros.
 files.upload()
 
 valoraciones = pd.read_csv(
@@ -56,11 +56,11 @@ datos.head()
 """),
 md("""El dataset contiene el identificador del usuario, la película y una puntuación de 1 a 5. No tenemos información sobre género, edad o tipo de película, así que las recomendaciones dependerán únicamente de las valoraciones.
 
-Esto también significa que una celda vacía no equivale a una mala nota: simplemente no sabemos si ese usuario ha visto la película.
+Una celda vacío no es una mala nota, simplemente no sabemos si ese usuario ha visto la película.
 """),
 md("""## 2. Recomendación basada en popularidad
 
-Empezamos por el método más sencillo. Consideraremos más popular la película que haya recibido más valoraciones, tal y como pide el enunciado.
+Empezamos por el método más sencillo. Consideraremos más popular la película que haya recibido más valoraciones.
 
 También mostraremos la nota media para tener algo de contexto, pero no la utilizaremos para ordenar. Una película con muchos votos no tiene por qué ser la mejor valorada; simplemente es la que más usuarios han puntuado.
 """),
@@ -77,7 +77,7 @@ grafica_df = popularidad.head(200).reset_index()
 grafica_df['grupo'] = grafica_df.title.map(
     lambda titulo: 'Top 10 popular' if titulo in top_10_titulos else 'Resto'
 )
-grafica_df['tamano'] = grafica_df.grupo.map({'Top 10 popular': 3.0, 'Resto': 2.0})
+grafica_df['tamano'] = grafica_df.grupo.map({'Top 10 popular': 5.0, 'Resto': 2.0})
 
 fig = px.scatter(
     grafica_df,
@@ -137,11 +137,7 @@ code("""def calcular_similitudes(matriz, objetivo, metodo='coseno', minimo_comun
         # devuelve NaN, que descartaremos después, sin llenar la salida de avisos.
         with warnings.catch_warnings():
             warnings.simplefilter('ignore', RuntimeWarning)
-            return candidatas.corrwith(
-                objetivo,
-                axis=1,
-                min_periods=minimo_comun
-            )
+            return candidatas.corrwith(objetivo, axis=1)
 
     if metodo == 'coseno':
         # Para cada fila usamos únicamente las posiciones valoradas por ambos.
