@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CineMatch — Tu próxima gran película",
-  description: "Recomendaciones de cine personalizadas con un motor híbrido basado en MovieLens.",
+  title: "CineMatch — Recomendador de películas",
+  description: "Demostración web de un sistema de recomendación basado en los datos de MovieLens.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

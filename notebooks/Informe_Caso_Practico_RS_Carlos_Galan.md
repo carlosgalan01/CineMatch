@@ -16,7 +16,7 @@ El tercer enfoque compara películas. Volvemos a utilizar Pearson, pero esta vez
 
 ## Comparación de los resultados
 
-No creo que exista un ganador absoluto. Popularidad resuelve bien el arranque en frío, pero no aprende nada del usuario. El filtrado usuario-usuario consigue personalizar, aunque funciona peor cuando hay pocas coincidencias o el perfil tiene gustos muy particulares. El filtrado ítem-ítem es estable y fácil de explicar, pero también favorece películas con bastante historial, ya que necesita valoraciones comunes para calcular una similitud fiable.
+Los tres métodos sirven para situaciones diferentes. Popularidad es útil cuando todavía no tenemos ninguna valoración, pero devuelve prácticamente la misma lista a todos los usuarios. El filtrado usuario-usuario ya tiene en cuenta el historial, aunque necesita suficientes coincidencias para encontrar vecinos fiables. El filtrado ítem-ítem también personaliza y, además, permite explicar cada resultado a partir de una película que el usuario ya conoce. Su principal limitación es que los títulos con pocas valoraciones tienen más dificultades para aparecer.
 
 Las gráficas del notebook permiten comparar las películas generadas por cada sistema. Aun así, no debemos interpretar sus puntuaciones como si estuvieran en la misma escala: el primer gráfico representa número de votos, el segundo una valoración estimada y el tercero un score calculado a partir de similitudes.
 
@@ -26,8 +26,8 @@ Como parte adicional he desarrollado CineMatch, una web que permite crear un per
 
 En la web un perfil puede empezar con solo cinco valoraciones, por lo que no tendría sentido exigir las 20 coincidencias utilizadas en el análisis académico. Por eso la versión online usa similitud coseno y umbrales menos restrictivos. Después combina los tres rankings con pesos dinámicos: durante el arranque da más importancia a popularidad y, cuando existe más historial, aumenta el peso de las dos señales colaborativas. La web añade también perfiles locales, explicaciones de cada recomendación y metadatos de TMDB.
 
-Esta capa híbrida no sustituye el ejercicio ni pretende cambiar lo que se evalúa. El notebook contiene de forma separada los tres filtros solicitados; CineMatch enseña cómo podrían combinarse y presentarse si lleváramos la misma idea a una aplicación real.
+Esta capa híbrida no sustituye el ejercicio. El notebook contiene por separado los tres filtros solicitados y la web enseña cómo podríamos combinarlos si quisiéramos llevar la misma idea a una aplicación real.
 
 ## Conclusión
 
-El caso permite ver bastante bien la evolución desde una recomendación general hasta una personalizada. Si tuviera que escoger un método colaborativo para este dataset, me quedaría con el basado en ítems por su estabilidad y porque sus resultados son fáciles de justificar. En una plataforma real, sin embargo, utilizaría popularidad para los usuarios nuevos y combinaría después varias señales, que es precisamente la ampliación que representa CineMatch.
+Con este caso podemos ver el paso desde una recomendación general hasta una personalizada. Si tuviera que escoger un único método colaborativo para este dataset, me quedaría con el basado en ítems porque es estable y podemos justificar fácilmente de dónde sale cada resultado. En una plataforma real usaría popularidad para los perfiles nuevos y combinaría después varias señales, que es precisamente lo que he intentado representar con CineMatch.
