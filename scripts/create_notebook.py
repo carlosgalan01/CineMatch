@@ -75,9 +75,16 @@ display(popularidad.head(10))
 # En la gráfica situamos las 200 películas con más votos y destacamos el Top 10.
 grafica_df = popularidad.head(200).reset_index()
 grafica_df['grupo'] = grafica_df.title.map(
-    lambda titulo: 'Top 10 popular' if titulo in top_10_titulos else 'Resto'
+    lambda titulo: (
+        'Top 10 más valoradas (estrella)'
+        if titulo in top_10_titulos
+        else 'Resto del Top 200'
+    )
 )
-grafica_df['tamano'] = grafica_df.grupo.map({'Top 10 popular': 5.0, 'Resto': 2.0})
+grafica_df['tamano'] = grafica_df.grupo.map({
+    'Top 10 más valoradas (estrella)': 5.0,
+    'Resto del Top 200': 2.0
+})
 
 fig = px.scatter(
     grafica_df,
@@ -86,17 +93,26 @@ fig = px.scatter(
     hover_name='title',
     color='nota_media',
     symbol='grupo',
-    symbol_map={'Top 10 popular': 'star', 'Resto': 'circle'},
+    symbol_map={
+        'Top 10 más valoradas (estrella)': 'star',
+        'Resto del Top 200': 'circle'
+    },
     size='tamano',
     title='Relación entre popularidad y nota media',
     labels={
         'num_valoraciones': 'Número de valoraciones',
-        'nota_media': 'Nota media'
+        'nota_media': 'Nota media',
+        'grupo': 'Marcador'
     },
     color_continuous_scale='RdYlGn'
 )
 fig.update_traces(marker=dict(line=dict(width=1, color='DarkSlateGrey')))
-fig.update_layout(height=600, template='plotly_white', showlegend=False)
+fig.update_layout(
+    height=600,
+    template='plotly_white',
+    showlegend=True,
+    legend=dict(title='Marcador', orientation='h', yanchor='bottom', y=1.02)
+)
 fig.show()
 """),
 md("""Este método funciona bien para un usuario nuevo porque no necesita saber nada sobre él. El problema es que devuelve prácticamente la misma lista para todo el mundo y favorece siempre a las películas más conocidas.
