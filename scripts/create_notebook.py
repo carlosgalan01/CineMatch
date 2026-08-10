@@ -22,12 +22,15 @@ Primero veremos qué películas son las más populares. Después haremos filtrad
 """),
 md("""## 1. Imports, carga y exploración de los datos
 
-Para este ejercicio no necesitamos demasiadas librerías. Usaremos `pandas` para preparar los datos y calcular las recomendaciones, y `matplotlib` para representar los resultados.
+Para este ejercicio no necesitamos demasiadas librerías. Usaremos `pandas` para preparar los datos, `numpy` para calcular la similitud coseno y `matplotlib` y `plotly` para representar los resultados.
 
 Al ejecutar la siguiente celda seleccionamos a la vez `file.tsv` y `Movie_Id_Titles.csv`. Me parece más cómodo subir directamente los dos ficheros que tener que preparar antes un ZIP con una estructura concreta.
 """),
-code("""import pandas as pd
+code("""import warnings
+import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
+import plotly.express as px
 from google.colab import files
 
 # Subimos directamente los dos ficheros que nos dan para el ejercicio.
@@ -61,20 +64,40 @@ Empezamos por el método más sencillo. Consideraremos más popular la película
 
 También mostraremos la nota media para tener algo de contexto, pero no la utilizaremos para ordenar. Una película con muchos votos no tiene por qué ser la mejor valorada; simplemente es la que más usuarios han puntuado.
 """),
-code("""popularidad = (datos.groupby(['pelicula_id', 'title']).rating
+code("""# Calculamos popularidad y nota media.
+popularidad = (datos.groupby(['pelicula_id', 'title']).rating
                .agg(num_valoraciones='count', nota_media='mean')
                .sort_values('num_valoraciones', ascending=False))
 
-top_populares = popularidad.head(10)
-display(top_populares)
+top_10_titulos = popularidad.head(10).index.get_level_values('title').tolist()
+display(popularidad.head(10))
 
-mostrar = top_populares.sort_values('num_valoraciones')
-plt.figure(figsize=(10, 6))
-plt.barh(mostrar.index.get_level_values('title'), mostrar.num_valoraciones, color='#315B7D')
-plt.title('Películas más populares')
-plt.xlabel('Número de valoraciones')
-plt.tight_layout()
-plt.show()
+# En la gráfica situamos las 200 películas con más votos y destacamos el Top 10.
+grafica_df = popularidad.head(200).reset_index()
+grafica_df['grupo'] = grafica_df.title.map(
+    lambda titulo: 'Top 10 popular' if titulo in top_10_titulos else 'Resto'
+)
+grafica_df['tamano'] = grafica_df.grupo.map({'Top 10 popular': 3.0, 'Resto': 2.0})
+
+fig = px.scatter(
+    grafica_df,
+    x='num_valoraciones',
+    y='nota_media',
+    hover_name='title',
+    color='nota_media',
+    symbol='grupo',
+    symbol_map={'Top 10 popular': 'star', 'Resto': 'circle'},
+    size='tamano',
+    title='Relación entre popularidad y nota media',
+    labels={
+        'num_valoraciones': 'Número de valoraciones',
+        'nota_media': 'Nota media'
+    },
+    color_continuous_scale='RdYlGn'
+)
+fig.update_traces(marker=dict(line=dict(width=1, color='DarkSlateGrey')))
+fig.update_layout(height=600, template='plotly_white', showlegend=False)
+fig.show()
 """),
 md("""Este método funciona bien para un usuario nuevo porque no necesita saber nada sobre él. El problema es que devuelve prácticamente la misma lista para todo el mundo y favorece siempre a las películas más conocidas.
 """),
@@ -97,18 +120,86 @@ matriz_usuario_pelicula.iloc[:5, :8]
 """),
 md("""## 4. Filtrado colaborativo basado en usuarios
 
-En este caso buscamos usuarios que hayan puntuado de forma parecida. Usaremos correlación de Pearson porque está contemplada en el enunciado y `pandas` permite calcularla directamente.
+En este caso buscamos usuarios que hayan puntuado de forma parecida. Vamos a probar las dos medidas que propone el enunciado:
 
-La correlación se calcula solo sobre películas que ambos usuarios hayan valorado. Además, exigimos un mínimo de 20 coincidencias para no decidir que dos personas se parecen porque han puntuado igual una o dos películas. Nos quedaremos con los 20 vecinos más cercanos y combinaremos sus notas mediante una media ponderada.
+- **Pearson** se fija en el patrón de las notas. Puede detectar gustos parecidos aunque una persona sea más generosa puntuando que otra.
+- **Coseno** comprueba si las valoraciones apuntan en una dirección parecida. No corrige tanto la forma de puntuar, pero funciona bien cuando la matriz tiene muchos huecos.
+
+No debemos comparar sus números como si fueran exactamente la misma escala. Lo que nos interesa es ver que ambas permiten ordenar usuarios parecidos. En los dos casos exigimos un mínimo de 20 películas en común para no sacar conclusiones a partir de una coincidencia demasiado pequeña.
 """),
-code("""def recomendar_por_usuarios(usuario_id, top_n=10, minimo_comun=20):
+code("""def calcular_similitudes(matriz, objetivo, metodo='coseno', minimo_comun=20):
+    # Primero dejamos solo las filas con suficientes valoraciones en común.
+    coincidencias = matriz.notna().mul(objetivo.notna(), axis='columns').sum(axis=1)
+    candidatas = matriz.loc[coincidencias >= minimo_comun]
+
+    if metodo == 'pearson':
+        # Algunas parejas no tienen variación suficiente. En ese caso Pearson
+        # devuelve NaN, que descartaremos después, sin llenar la salida de avisos.
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', RuntimeWarning)
+            return candidatas.corrwith(
+                objetivo,
+                axis=1,
+                min_periods=minimo_comun
+            )
+
+    if metodo == 'coseno':
+        # Para cada fila usamos únicamente las posiciones valoradas por ambos.
+        valores = candidatas.fillna(0).mul(objetivo.notna(), axis='columns')
+        objetivo_comun = candidatas.notna().mul(
+            objetivo.fillna(0),
+            axis='columns'
+        )
+        numerador = (valores * objetivo_comun).sum(axis=1)
+        denominador = np.sqrt(
+            (valores ** 2).sum(axis=1) *
+            (objetivo_comun ** 2).sum(axis=1)
+        )
+        return numerador / denominador.replace(0, np.nan)
+
+    raise ValueError("El método debe ser 'pearson' o 'coseno'.")
+
+
+USUARIO_EJEMPLO = 196
+objetivo_ejemplo = matriz_usuario_pelicula.loc[USUARIO_EJEMPLO]
+
+similitudes_pearson = calcular_similitudes(
+    matriz_usuario_pelicula, objetivo_ejemplo, metodo='pearson', minimo_comun=20
+).drop(index=USUARIO_EJEMPLO, errors='ignore').dropna()
+
+similitudes_coseno = calcular_similitudes(
+    matriz_usuario_pelicula, objetivo_ejemplo, metodo='coseno', minimo_comun=20
+).drop(index=USUARIO_EJEMPLO, errors='ignore').dropna()
+
+resumen_metricas = pd.DataFrame({
+    'Métrica': ['Pearson', 'Coseno'],
+    'Usuarios comparables': [len(similitudes_pearson), len(similitudes_coseno)],
+    'Similitudes positivas': [
+        (similitudes_pearson > 0).sum(),
+        (similitudes_coseno > 0).sum()
+    ],
+    'Mayor similitud': [similitudes_pearson.max(), similitudes_coseno.max()]
+})
+
+display(resumen_metricas.round(3))
+"""),
+md("""Para generar las recomendaciones nos quedaremos con el coseno. En este dataset hay muchísimas películas sin valorar y esta medida se adapta bien a ese tipo de matriz. También es la que utiliza CineMatch cuando recibe un perfil corto desde la web. Pearson sigue siendo útil para la comparación, pero aquí preferimos mantener el mismo criterio en el notebook y en la demostración.
+"""),
+code("""def recomendar_por_usuarios(
+    usuario_id,
+    top_n=10,
+    minimo_comun=20,
+    metodo='coseno'
+):
     objetivo = matriz_usuario_pelicula.loc[usuario_id]
 
-    # Buscamos correlaciones positivas y eliminamos al propio usuario.
-    similitudes = (matriz_usuario_pelicula
-                   .corrwith(objetivo, axis=1, min_periods=minimo_comun)
-                   .drop(index=usuario_id, errors='ignore')
-                   .dropna())
+    # Calculamos la similitud y eliminamos al propio usuario.
+    similitudes = (calcular_similitudes(
+        matriz_usuario_pelicula,
+        objetivo,
+        metodo=metodo,
+        minimo_comun=minimo_comun
+    ).drop(index=usuario_id, errors='ignore').dropna())
     vecinos = similitudes[similitudes > 0].sort_values(ascending=False).head(20)
 
     predicciones = []
@@ -126,9 +217,12 @@ code("""def recomendar_por_usuarios(usuario_id, top_n=10, minimo_comun=20):
             .sort_values(['prediccion', 'vecinos_que_la_valoran'], ascending=False)
             .head(top_n)), vecinos
 
-USUARIO_EJEMPLO = 196
-recomendaciones_usuario, vecinos = recomendar_por_usuarios(USUARIO_EJEMPLO)
+recomendaciones_usuario, vecinos = recomendar_por_usuarios(
+    USUARIO_EJEMPLO,
+    metodo='coseno'
+)
 
+print('Métrica utilizada: coseno')
 print(f'Vecinos utilizados: {len(vecinos)}')
 display(recomendaciones_usuario)
 
@@ -143,22 +237,24 @@ plt.show()
 """),
 md("""Ahora sí obtenemos una lista personalizada. Dos usuarios pueden recibir resultados diferentes porque sus vecinos también serán diferentes.
 
-La principal limitación es que necesitamos suficientes películas en común para calcular una correlación fiable. Si el usuario acaba de llegar o tiene gustos muy poco habituales, puede que no encontremos vecinos útiles.
+La principal limitación es que necesitamos suficientes películas en común para calcular una similitud fiable. Si el usuario acaba de llegar o tiene gustos muy poco habituales, puede que no encontremos vecinos útiles.
 """),
 md("""## 5. Filtrado colaborativo basado en ítems
 
 El tercer método compara películas en lugar de personas. La lógica es sencilla: si dos películas suelen recibir notas parecidas de los mismos usuarios, consideramos que están relacionadas.
 
-Volvemos a usar Pearson y exigimos al menos 50 valoraciones comunes. Para construir la lista personalizada partimos de las películas que el usuario ha puntuado con 4 o 5 y buscamos títulos similares. Personalmente, este método me parece más fácil de explicar porque podemos decir directamente qué película del historial ha provocado cada recomendación.
+Usaremos también similitud coseno y exigimos al menos 50 valoraciones comunes. Para construir la lista personalizada partimos de las películas que el usuario ha puntuado con 4 o 5 y buscamos títulos similares. Personalmente, este método me parece más fácil de explicar porque podemos decir directamente qué película del historial ha provocado cada recomendación.
 """),
 code("""matriz_pelicula_usuario = matriz_usuario_pelicula.T
 
-def peliculas_similares(titulo, top_n=100, minimo_comun=50):
+def peliculas_similares(titulo, top_n=100, minimo_comun=50, metodo='coseno'):
     objetivo = matriz_pelicula_usuario.loc[titulo]
-    similitudes = (matriz_pelicula_usuario
-                   .corrwith(objetivo, axis=1, min_periods=minimo_comun)
-                   .drop(index=titulo, errors='ignore')
-                   .dropna())
+    similitudes = (calcular_similitudes(
+        matriz_pelicula_usuario,
+        objetivo,
+        metodo=metodo,
+        minimo_comun=minimo_comun
+    ).drop(index=titulo, errors='ignore').dropna())
     return similitudes[similitudes > 0].sort_values(ascending=False).head(top_n)
 
 def recomendar_por_items(usuario_id, top_n=10):
@@ -168,46 +264,68 @@ def recomendar_por_items(usuario_id, top_n=10):
 
     # Cada película favorita aporta candidatos según su similitud.
     for titulo, rating in favoritas.items():
-        for candidata, similitud in peliculas_similares(titulo).items():
+        for candidata, similitud in peliculas_similares(titulo, metodo='coseno').items():
             if candidata in historial.index:
                 continue
             fila = candidatos.setdefault(
                 candidata,
-                {'suma': 0, 'peso': 0, 'porque': titulo, 'mejor_aporte': 0}
+                {
+                    'afinidad': 0,
+                    'similitud_principal': 0,
+                    'porque': titulo,
+                    'valoracion_origen': rating,
+                    'conexiones': 0
+                }
             )
-            aporte = similitud * rating
-            fila['suma'] += aporte
-            fila['peso'] += similitud
-            if aporte > fila['mejor_aporte']:
+            fila['conexiones'] += 1
+
+            # La afinidad combina similitud y cuánto gustó la película de origen.
+            afinidad = similitud * (rating / 5)
+            if afinidad > fila['afinidad']:
+                fila['afinidad'] = afinidad
+                fila['similitud_principal'] = similitud
                 fila['porque'] = titulo
-                fila['mejor_aporte'] = aporte
+                fila['valoracion_origen'] = rating
 
     recomendaciones = [
         {
             'title': titulo,
-            'score_item_item': fila['suma'] / fila['peso'],
-            'porque': fila['porque']
+            'afinidad': fila['afinidad'],
+            'similitud_principal': fila['similitud_principal'],
+            'porque': fila['porque'],
+            'valoracion_origen': fila['valoracion_origen'],
+            'conexiones': fila['conexiones']
         }
         for titulo, fila in candidatos.items()
-        if fila['peso'] > 0
     ]
     return (pd.DataFrame(recomendaciones)
-            .sort_values('score_item_item', ascending=False)
+            .sort_values(['afinidad', 'conexiones'], ascending=False)
             .head(top_n))
 
 recomendaciones_items = recomendar_por_items(USUARIO_EJEMPLO)
 display(recomendaciones_items)
 
-mostrar = recomendaciones_items.sort_values('score_item_item')
+mostrar = recomendaciones_items.sort_values('conexiones')
 plt.figure(figsize=(10, 6))
-plt.barh(mostrar.title, mostrar.score_item_item, color='#856084')
-plt.title(f'Recomendaciones para el usuario {USUARIO_EJEMPLO} basadas en películas similares')
-plt.xlabel('Score ítem-ítem')
-plt.xlim(0, 5)
+barras = plt.barh(mostrar.title, mostrar.conexiones, color='#856084')
+plt.title(f'Películas del historial que apoyan cada recomendación')
+plt.xlabel('Número de conexiones con películas valoradas con 4 o 5')
+
+for barra, similitud in zip(barras, mostrar.similitud_principal):
+    plt.text(
+        barra.get_width() + 0.15,
+        barra.get_y() + barra.get_height() / 2,
+        f'sim. {similitud:.3f}',
+        va='center'
+    )
+
+plt.xlim(0, mostrar.conexiones.max() + 4)
 plt.tight_layout()
 plt.show()
 """),
-md("""La columna `porque` hace que el resultado sea bastante transparente: podemos ver qué película ya valorada ha tenido más influencia en cada sugerencia.
+md("""La `afinidad` ya no intenta aparentar que es una nota esperada. Es un valor interno entre 0 y 1 que combina la similitud con la valoración de la película de origen. Cuanto más alto sea, más fuerte es esa relación, pero no es una probabilidad.
+
+La columna `porque` permite ver qué película ha provocado principalmente la sugerencia y `conexiones` cuenta cuántas películas favoritas también la respaldan. Por eso la gráfica representa las conexiones y anota la similitud principal: aporta más información que diez barras prácticamente iguales a 5.
 
 Este enfoque suele ser más estable que comparar usuarios, pero sigue dependiendo de que existan suficientes valoraciones comunes entre las películas. Los títulos menos conocidos van a tener más dificultades para aparecer.
 """),
@@ -235,7 +353,7 @@ comparacion
 """),
 md("""## 7. Conclusiones
 
-En este caso práctico hemos implementado los tres métodos que pedía el enunciado utilizando `pandas`. El ranking de popularidad es el más sencillo y funciona bien para arrancar, aunque no tiene ninguna personalización. El filtrado por usuarios sí adapta el resultado, pero necesita suficientes coincidencias para encontrar vecinos fiables.
+En este caso práctico hemos implementado los tres métodos que pedía el enunciado utilizando `pandas`. También hemos comparado Pearson y coseno: las dos medidas sirven para encontrar patrones parecidos, pero hemos utilizado coseno en las recomendaciones porque se adapta bien a una matriz con muchos huecos y mantiene el mismo criterio que la web. El ranking de popularidad es el más sencillo y funciona bien para arrancar, aunque no tiene ninguna personalización. El filtrado por usuarios sí adapta el resultado, pero necesita suficientes coincidencias para encontrar vecinos fiables.
 
 El filtrado basado en ítems es el que más me convence para este dataset. Además de personalizar, permite justificar cada resultado a partir de una película que el usuario ya ha valorado bien. Aun así, también tiene sesgo hacia los títulos con más información y no resuelve por sí solo el problema de un usuario completamente nuevo.
 

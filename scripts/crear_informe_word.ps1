@@ -48,32 +48,40 @@ try {
     $contenido = Get-Content -Raw -Encoding UTF8 -LiteralPath $origenResuelto
     $bloques = [regex]::Split($contenido.Trim(), '(?:\r?\n){2,}')
     $tituloInsertado = $false
+    $seleccion = $word.Selection
+    $firma = [string]::Concat(
+        'Carlos Gal', [char]0x00E1, 'n ', [char]0x00B7,
+        ' M', [char]0x00E1, 'ster IEP'
+    )
 
     foreach ($bloque in $bloques) {
         $texto = $bloque.Trim()
         if (-not $texto) { continue }
 
-        $parrafo = $documento.Paragraphs.Add()
         if ($texto.StartsWith('# ')) {
-            $parrafo.Range.Text = $texto.Substring(2)
-            $parrafo.Style = -63
+            $seleccion.Style = -63
+            $seleccion.TypeText($texto.Substring(2))
+            $seleccion.TypeParagraph()
             $tituloInsertado = $true
 
-            $autor = $documento.Paragraphs.Add()
-            $autor.Range.Text = 'Carlos Galán · Máster IEP'
-            $autor.Range.Font.Name = 'Aptos'
-            $autor.Range.Font.Size = 9.5
-            $autor.Range.Font.Color = 0x777777
-            $autor.Range.ParagraphFormat.SpaceAfter = 8
+            $seleccion.Style = -1
+            $seleccion.Font.Name = 'Aptos'
+            $seleccion.Font.Size = 9.5
+            $seleccion.Font.Color = 0x777777
+            $seleccion.ParagraphFormat.SpaceAfter = 8
+            $seleccion.TypeText($firma)
+            $seleccion.TypeParagraph()
         }
         elseif ($texto.StartsWith('## ')) {
-            $parrafo.Range.Text = $texto.Substring(3)
-            $parrafo.Style = -2
+            $seleccion.Style = -2
+            $seleccion.TypeText($texto.Substring(3))
+            $seleccion.TypeParagraph()
         }
         else {
             $textoLimpio = ($texto -replace '\r?\n', ' ' -replace '[`*]', '')
-            $parrafo.Range.Text = $textoLimpio
-            $parrafo.Style = -1
+            $seleccion.Style = -1
+            $seleccion.TypeText($textoLimpio)
+            $seleccion.TypeParagraph()
         }
     }
 
@@ -82,7 +90,10 @@ try {
     }
 
     $pie = $documento.Sections.Item(1).Footers.Item(1).Range
-    $pie.Text = 'Carlos Galán · Caso Práctico 1     '
+    $pie.Text = [string]::Concat(
+        'Carlos Gal', [char]0x00E1, 'n ', [char]0x00B7,
+        ' Caso Pr', [char]0x00E1, 'ctico 1     '
+    )
     $pie.Font.Name = 'Aptos'
     $pie.Font.Size = 8
     $pie.Font.Color = 0x888888
