@@ -1,24 +1,26 @@
 # CineMatch
 
-CineMatch es la demostración web del caso práctico **Motores de recomendación de películas**. El trabajo principal está desarrollado en el notebook y utiliza las 100.003 valoraciones de MovieLens para comparar tres métodos:
+CineMatch es mi caso práctico de sistemas de recomendación de películas. La parte principal del trabajo está en el notebook, donde utilizo las 100.003 valoraciones de MovieLens para comparar tres métodos:
 
-- Recomendación por popularidad.
-- Filtrado colaborativo basado en usuarios.
-- Filtrado colaborativo basado en ítems.
+- Recomendación basada en popularidad.
+- Filtrado colaborativo usuario–usuario.
+- Filtrado colaborativo ítem–ítem.
 
-La web lleva estas ideas a una aplicación sencilla en la que podemos crear perfiles, valorar películas y obtener recomendaciones. Como ampliación, combina los tres rankings mediante pesos dinámicos: con poco historial se apoya más en popularidad y, a partir de cinco valoraciones, da más importancia a películas y usuarios similares.
+Como ampliación he desarrollado una web para enseñar estos métodos de una forma más visual. La aplicación permite crear perfiles locales, valorar películas y obtener un ranking que combina popularidad, películas similares y usuarios con gustos parecidos. Los perfiles se guardan únicamente en el navegador y no se sincronizan entre dispositivos.
 
-## Archivos de la entrega
+## Enlaces de la entrega
 
-- [`Caso_Practico_RS_Carlos_Galan.ipynb`](notebooks/Caso_Practico_RS_Carlos_Galan.ipynb): desarrollo principal del caso práctico.
-- [`Informe_Caso_Practico_RS_Carlos_Galan.docx`](notebooks/Informe_Caso_Practico_RS_Carlos_Galan.docx): informe breve con el planteamiento, los resultados y la comparación de los métodos.
-- [`Informe_Caso_Practico_RS_Carlos_Galan.md`](notebooks/Informe_Caso_Practico_RS_Carlos_Galan.md): versión editable del informe.
-- [`src/app/page.tsx`](src/app/page.tsx): interfaz de CineMatch.
-- [`src/app/api/recommend/route.ts`](src/app/api/recommend/route.ts): motor utilizado por la web.
+- [Informe en PDF](notebooks/Informe_Caso_Practico_RS_Carlos_Galan.pdf)
+- [Notebook en Google Colab](https://colab.research.google.com/github/carlosgalan01/CineMatch/blob/main/notebooks/Caso_Practico_RS_Carlos_Galan.ipynb)
+- [Probar CineMatch](https://cine-match-primera-version-2026-08.vercel.app/)
 
-## Ejecutar CineMatch
+El notebook estudia los tres métodos por separado, tal como pide el enunciado. La web utiliza las mismas ideas, pero las combina mediante pesos dinámicos para que la recomendación vaya cambiando a medida que añadimos valoraciones.
 
-El proyecto necesita Node.js 20.9 o superior. Después de descargarlo:
+## Ejecutar la web en local (opcional)
+
+Esta parte no es necesaria para revisar la entrega. La dejo únicamente por si alguien quiere descargar y probar el proyecto en su ordenador.
+
+Se necesita Node.js 20.9 o superior:
 
 ```bash
 npm install
@@ -27,12 +29,10 @@ npm run dev
 
 La aplicación estará disponible en [http://localhost:3000](http://localhost:3000).
 
-Los pósteres y las sinopsis proceden de TMDB. Para mostrarlos en local hay que crear un archivo `.env.local` a partir de `.env.example` y añadir un token de lectura:
+Para cargar los carteles, las sinopsis y los géneros hay que copiar `.env.example` como `.env.local` y añadir un token de lectura de TMDB:
 
 ```env
 TMDB_API_TOKEN=tu_token_de_lectura_de_tmdb
 ```
 
-Sin este token el recomendador sigue funcionando, pero utiliza fondos alternativos y no carga los metadatos de TMDB.
-
-La versión desplegada puede consultarse en [CineMatch en Vercel](https://cine-match-primera-version-2026-08.vercel.app/).
+Sin ese token el motor de recomendación sigue funcionando, pero la web no puede cargar los metadatos de TMDB.
