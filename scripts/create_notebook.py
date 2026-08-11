@@ -283,70 +283,53 @@ def recomendar_por_items(usuario_id, top_n=10):
     favoritas = historial[historial >= 4]
     candidatos = {}
 
-    # Cada película favorita aporta candidatos según su similitud.
+    # Guardamos la relación más fuerte encontrada para cada candidata.
     for titulo, rating in favoritas.items():
         for candidata, similitud in peliculas_similares(titulo, metodo='coseno').items():
             if candidata in historial.index:
                 continue
-            fila = candidatos.setdefault(
-                candidata,
-                {
-                    'afinidad': 0,
-                    'similitud_principal': 0,
+            if (candidata not in candidatos or
+                    similitud > candidatos[candidata]['similitud']):
+                candidatos[candidata] = {
+                    'similitud': similitud,
                     'porque': titulo,
-                    'valoracion_origen': rating,
-                    'conexiones': 0
+                    'valoracion_origen': rating
                 }
-            )
-            fila['conexiones'] += 1
-
-            # La afinidad combina similitud y cuánto gustó la película de origen.
-            afinidad = similitud * (rating / 5)
-            if afinidad > fila['afinidad']:
-                fila['afinidad'] = afinidad
-                fila['similitud_principal'] = similitud
-                fila['porque'] = titulo
-                fila['valoracion_origen'] = rating
 
     recomendaciones = [
         {
             'title': titulo,
-            'afinidad': fila['afinidad'],
-            'similitud_principal': fila['similitud_principal'],
+            'similitud': fila['similitud'],
             'porque': fila['porque'],
-            'valoracion_origen': fila['valoracion_origen'],
-            'conexiones': fila['conexiones']
+            'valoracion_origen': fila['valoracion_origen']
         }
         for titulo, fila in candidatos.items()
     ]
     return (pd.DataFrame(recomendaciones)
-            .sort_values(['afinidad', 'conexiones'], ascending=False)
+            .sort_values('similitud', ascending=False)
             .head(top_n))
 
 recomendaciones_items = recomendar_por_items(USUARIO_EJEMPLO)
 display(recomendaciones_items)
 
-mostrar = recomendaciones_items.sort_values('conexiones')
+mostrar = recomendaciones_items.sort_values('similitud')
 plt.figure(figsize=(10, 6))
-barras = plt.barh(mostrar.title, mostrar.conexiones, color='#856084')
-plt.title(f'Películas del historial que apoyan cada recomendación')
-plt.xlabel('Número de conexiones con películas valoradas con 4 o 5')
+plt.scatter(mostrar.similitud, mostrar.title, color='#856084', s=70)
+plt.title('Similitud con la película favorita más relacionada')
+plt.xlabel('Similitud coseno')
+plt.grid(axis='x', alpha=0.25)
 
-for barra, similitud in zip(barras, mostrar.similitud_principal):
-    plt.text(
-        barra.get_width() + 0.15,
-        barra.get_y() + barra.get_height() / 2,
-        f'sim. {similitud:.3f}',
-        va='center'
-    )
-
-plt.xlim(0, mostrar.conexiones.max() + 4)
+margen = max((mostrar.similitud.max() - mostrar.similitud.min()) * 0.2, 0.002)
+plt.xlim(
+    max(0, mostrar.similitud.min() - margen),
+    min(1, mostrar.similitud.max() + margen)
+)
 plt.tight_layout()
 plt.show()
 """),
-md("""La `afinidad` ya no intenta aparentar que es una nota esperada. Es un valor interno entre 0 y 1 que combina la similitud con la valoración de la película de origen. Cuanto más alto sea, más fuerte es esa relación, pero no es una probabilidad.
+md("""La `similitud` es el único valor utilizado para ordenar este resultado. Cuanto más se acerca a 1, más se parecen las valoraciones de ambas películas entre los usuarios que han puntuado las dos. No es una nota esperada ni una probabilidad.
 
-La columna `porque` permite ver qué película ha provocado principalmente la sugerencia y `conexiones` cuenta cuántas películas favoritas también la respaldan. Por eso la gráfica representa las conexiones y anota la similitud principal: aporta más información que diez barras prácticamente iguales a 5.
+La columna `porque` muestra la película favorita con la que se ha encontrado la relación más fuerte y `valoracion_origen` recuerda qué nota le puso el usuario. Hemos dejado el método así de sencillo para que se vea directamente de dónde sale cada recomendación.
 
 Este enfoque suele ser más estable que comparar usuarios, pero sigue dependiendo de que existan suficientes valoraciones comunes entre las películas. Los títulos menos conocidos van a tener más dificultades para aparecer.
 """),
