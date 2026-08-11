@@ -195,7 +195,16 @@ resumen_metricas = pd.DataFrame({
 
 display(resumen_metricas.round(3))
 """),
-md("""Para generar las recomendaciones nos quedaremos con el coseno. En este dataset hay muchísimas películas sin valorar y esta medida se adapta bien a ese tipo de matriz. También es la que utiliza CineMatch cuando recibe un perfil corto desde la web. Pearson sigue siendo útil para la comparación, pero aquí preferimos mantener el mismo criterio en el notebook y en la demostración.
+md("""Para generar las recomendaciones nos quedaremos con el coseno. No significa que sea siempre mejor que Pearson: simplemente se adapta bien a una matriz con muchos huecos y es la métrica que también utiliza CineMatch cuando recibe un perfil corto. Pearson sigue siendo útil para comparar usuarios cuando hay bastante historial compartido.
+
+El proceso para llegar a las recomendaciones es el siguiente:
+
+1. Partimos del usuario 196 y buscamos personas que hayan valorado al menos 20 películas en común con él.
+2. Con coseno ordenamos esos usuarios por parecido y nos quedamos con los 20 primeros.
+3. Para cada película que el usuario 196 no ha visto, recogemos las notas que le han dado esos vecinos.
+4. Si la han valorado al menos dos vecinos, calculamos una media ponderada: cuenta más la nota de quien más se parece al usuario.
+
+La tabla final muestra la película, la valoración estimada y cuántos vecinos han contribuido a esa estimación.
 """),
 code("""def recomendar_por_usuarios(
     usuario_id,
