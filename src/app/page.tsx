@@ -6,9 +6,10 @@ import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } fro
 type Film = { id: number; title: string; genre: string; blurb: string; tint: string };
 type SignalDetail = { rank: number; weight: number; rankFactor: number; contribution: number };
 type Recommendation = { id: number; title: string; rating: number; count: number; score: number; reason: string; reasonType: "item" | "users" | "popular"; because?: string; signals?: { popular: number; item: number; users: number }; signalDetails?: Partial<Record<"popular" | "item" | "users", SignalDetail>> };
+type SimilarMovie = { id: number; title: string; rating: number; count: number };
 type CatalogMovie = { movieId: number; sourceTitle: string; posterUrl: string | null; backdropUrl?: string | null; overview: string; genres: string[]; year?: string };
 type MovieView = { id: number; title: string; genre: string; blurb: string; tint: string; reason?: string; communityRating?: number; count?: number };
-type AppView = "discover" | "ratings" | "recommendations" | "motor";
+type AppView = "similar" | "discover" | "ratings" | "recommendations" | "motor";
 type LocalProfile = { id: string; name: string };
 type ProfileData = { ratings: Record<number, number>; genres: string[]; view: AppView; cardIndex: number };
 type Diagnostics = { ratings: number; neighbours: number };
@@ -112,7 +113,7 @@ function readProfileData(id: string): ProfileData {
     const savedGenres = JSON.parse(window.localStorage.getItem(profileKey(id, "genres")) ?? "[]") as string[];
     const savedView = window.localStorage.getItem(profileKey(id, "view")) as AppView | null;
     const savedCard = Number(window.localStorage.getItem(profileKey(id, "card")) ?? 0);
-    const view = savedView && ["discover", "ratings", "recommendations", "motor"].includes(savedView) ? savedView : Object.keys(ratings).length >= 5 ? "recommendations" : "discover";
+    const view = savedView && ["similar", "discover", "ratings", "recommendations", "motor"].includes(savedView) ? savedView : Object.keys(ratings).length >= 5 ? "recommendations" : "discover";
     return { ratings, genres: savedGenres, view, cardIndex: Number.isInteger(savedCard) && savedCard >= 0 ? savedCard : 0 };
   } catch {
     return { ratings: {}, genres: [], view: "discover", cardIndex: 0 };
@@ -162,7 +163,7 @@ export default function Home() {
   const catalogRef = useRef<Record<number, CatalogMovie>>({});
   const restoreAttempted = useRef(false);
   const [currentCard, setCurrentCard] = useState(0);
-  const [activeView, setActiveView] = useState<AppView>("discover");
+  const [activeView, setActiveView] = useState<AppView>("similar");
   const [hasDiscovered, setHasDiscovered] = useState(false);
   const [cardMotion, setCardMotion] = useState<"left" | "right" | null>(null);
   const [ratingFeedback, setRatingFeedback] = useState<number | null>(null);
@@ -170,6 +171,12 @@ export default function Home() {
   const [activeProfile, setActiveProfile] = useState<LocalProfile | null>(null);
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
   const [ratedConfirmation, setRatedConfirmation] = useState<{ title: string; rating: number } | null>(null);
+  const [similarCatalog, setSimilarCatalog] = useState<SimilarMovie[]>([]);
+  const [similarQuery, setSimilarQuery] = useState("");
+  const [similarSeed, setSimilarSeed] = useState<SimilarMovie | null>(null);
+  const [similarResults, setSimilarResults] = useState<Recommendation[]>([]);
+  const [similarLoading, setSimilarLoading] = useState(false);
+  const [similarError, setSimilarError] = useState("");
   const confirmationTimer = useRef<number | null>(null);
 
   useEffect(() => {
@@ -189,7 +196,7 @@ export default function Home() {
           const legacyGenres = JSON.parse(window.localStorage.getItem("cinematch-genres") ?? "[]") as string[];
           const legacyView = window.localStorage.getItem("cinematch-view") as AppView | null;
           setRatings(legacyRatings); setSelectedGenres(legacyGenres);
-          if (legacyView && ["discover", "ratings", "recommendations", "motor"].includes(legacyView)) setActiveView(legacyView);
+          if (legacyView && ["similar", "discover", "ratings", "recommendations", "motor"].includes(legacyView)) setActiveView(legacyView);
           else if (Object.keys(legacyRatings).length >= 5) setActiveView("recommendations");
         }
       } catch { window.localStorage.removeItem("cinematch-ratings"); }
@@ -229,6 +236,14 @@ export default function Home() {
       catalogRef.current = { ...catalogRef.current, ...additions };
       setCatalog(catalogRef.current);
     } catch { /* Visual fallbacks keep the app usable offline. */ }
+  }, []);
+  useEffect(() => {
+    let active = true;
+    fetch("/api/similar")
+      .then((response) => response.json())
+      .then((result: { movies?: SimilarMovie[] }) => { if (active) setSimilarCatalog(result.movies ?? []); })
+      .catch(() => { if (active) setSimilarError("No hemos podido cargar el catálogo de películas."); });
+    return () => { active = false; };
   }, []);
   useEffect(() => { void loadCatalog(visibleFilms.slice(currentCard, currentCard + 8).map((film) => film.id)); }, [loadCatalog, visibleFilms, currentCard]);
 
@@ -322,9 +337,24 @@ export default function Home() {
     if (confirmationTimer.current) window.clearTimeout(confirmationTimer.current);
     confirmationTimer.current = window.setTimeout(() => setRatedConfirmation(null), 2500);
   }
+  async function findSimilar(movie: SimilarMovie) {
+    setSimilarSeed(movie); setSimilarQuery(cleanTitle(movie.title)); setSimilarLoading(true); setSimilarError("");
+    try {
+      const response = await fetch(`/api/similar?movieId=${movie.id}`);
+      const result = await response.json() as { recommendations?: Recommendation[]; error?: string };
+      if (!response.ok) throw new Error(result.error || "No hemos podido comparar esta película.");
+      const nextResults = result.recommendations ?? [];
+      setSimilarResults(nextResults);
+      void loadCatalog([movie.id, ...nextResults.map((resultMovie) => resultMovie.id)]);
+    } catch (requestError) {
+      setSimilarResults([]);
+      setSimilarError(requestError instanceof Error ? requestError.message : "No hemos podido comparar esta película.");
+    } finally { setSimilarLoading(false); }
+  }
 
   return <main className="min-h-screen overflow-x-hidden bg-[#080812] pb-16 text-[#f7f1e7] sm:pb-0">
     <Navigation ratedCount={rated.length} activeView={activeView} canViewRecommendations={rated.length >= 5} profileName={activeProfile?.name} onProfileClick={() => setProfileDialogOpen(true)} onNavigate={setActiveView} />
+    {activeView === "similar" && <SimilarMoviesView query={similarQuery} onQueryChange={(value) => { setSimilarQuery(value); if (value.trim().toLocaleLowerCase("es") !== cleanTitle(similarSeed?.title ?? "").toLocaleLowerCase("es")) { setSimilarSeed(null); setSimilarResults([]); } }} movies={similarCatalog} seed={similarSeed} results={similarResults} catalog={catalog} loading={similarLoading} error={similarError} onSelect={(movie) => void findSimilar(movie)} onOpen={(movie) => setSelectedMovie(viewForRecommendation(movie))} />}
     {activeView === "discover" && <GenreIntro selectedGenres={selectedGenres} onToggle={(genre) => setSelectedGenres((current) => current.includes(genre) ? current.filter((item) => item !== genre) : [...current, genre])} onContinue={() => setActiveView("ratings")} />}
     {activeView === "ratings" && <section className="relative min-h-screen px-5 pb-12 pt-24 sm:px-8 sm:pt-28">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_28%,rgba(97,74,180,.22),transparent_34%),linear-gradient(180deg,#080812_0%,#0c0c19_58%,#080812_100%)]" />
@@ -354,18 +384,27 @@ export default function Home() {
     {activeView === "motor" && <MotorView ratedCount={rated.length} recommendations={recommendations} diagnostics={diagnostics} loading={loading} onCalculate={() => void discover(ratings)} />}
     {selectedMovie && <MovieModal movie={selectedMovie} metadata={catalog[selectedMovie.id]} rating={ratings[selectedMovie.id]} onRate={rateSelectedMovie} onClose={() => setSelectedMovie(null)} />}
     {ratedConfirmation && <RatingConfirmation title={ratedConfirmation.title} rating={ratedConfirmation.rating} />}
-    {storageReady && (!activeProfile || profileDialogOpen) && <ProfileDialog profiles={profiles} activeProfile={activeProfile} hasLegacyRatings={!activeProfile && rated.length > 0} onSelect={selectProfile} onCreate={createProfile} onDelete={deleteProfile} onClose={activeProfile ? () => setProfileDialogOpen(false) : undefined} />}
+    {storageReady && (((!activeProfile && activeView !== "similar") || profileDialogOpen)) && <ProfileDialog profiles={profiles} activeProfile={activeProfile} hasLegacyRatings={!activeProfile && rated.length > 0} onSelect={selectProfile} onCreate={createProfile} onDelete={deleteProfile} onClose={activeView === "similar" || activeProfile ? () => setProfileDialogOpen(false) : undefined} />}
   </main>;
 }
 
 function Navigation({ ratedCount, activeView, canViewRecommendations, profileName, onProfileClick, onNavigate }: { ratedCount: number; activeView: AppView; canViewRecommendations: boolean; profileName?: string; onProfileClick: () => void; onNavigate: (view: AppView) => void }) {
-  const items: Array<{ view: AppView; label: string }> = [{ view: "discover", label: "Descubrir" }, { view: "ratings", label: "Valorar" }, { view: "recommendations", label: "Para ti" }, { view: "motor", label: "Motor" }];
+  const items: Array<{ view: AppView; label: string }> = [{ view: "similar", label: "Similares" }, { view: "discover", label: "Descubrir" }, { view: "ratings", label: "Valorar" }, { view: "recommendations", label: "Para ti" }, { view: "motor", label: "Motor" }];
   const tabs = (mobile = false) => items.map(({ view, label }) => {
     const disabled = view === "recommendations" && !canViewRecommendations;
     const active = activeView === view;
     return <button key={view} type="button" disabled={disabled} title={disabled ? "Valora al menos 5 películas para acceder" : undefined} onClick={() => onNavigate(view)} className={`${mobile ? "flex-1 py-3 text-xs" : "px-3 py-2 text-sm"} relative font-medium transition ${active ? "text-white" : "text-white/42 hover:text-white/75"} disabled:cursor-not-allowed disabled:opacity-25`}><span>{label}</span>{active && <span className={`absolute bg-[#a99bff] ${mobile ? "inset-x-5 top-0 h-0.5" : "inset-x-3 -bottom-[13px] h-0.5"}`} />}</button>;
   });
-  return <><nav className="fixed inset-x-0 top-0 z-40 border-b border-white/[.06] bg-[#080812]/75 backdrop-blur-xl"><div className="mx-auto grid h-16 max-w-[1500px] grid-cols-[1fr_auto] items-center px-5 sm:h-18 sm:grid-cols-[1fr_auto_1fr] sm:px-8 lg:px-12"><button type="button" onClick={() => onNavigate("discover")} className="justify-self-start text-xl font-black tracking-[-.09em] text-[#b3a6ff] sm:text-2xl">CINEMATCH</button><div className="hidden items-center gap-2 sm:flex">{tabs()}</div><button type="button" onClick={onProfileClick} className="flex max-w-36 items-center gap-2 justify-self-end rounded-full border border-white/12 bg-white/[.06] px-2.5 py-1.5 text-[11px] text-white/65 transition hover:border-white/25 hover:text-white sm:max-w-48 sm:text-xs"><span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#7161bd] text-[10px] font-bold text-white">{profileName?.charAt(0).toUpperCase() || "?"}</span><span className="truncate">{profileName || "Crear perfil"}</span><span className="tabular-nums text-white/35">· {ratedCount}</span></button></div></nav><nav aria-label="Navegación principal" className="fixed inset-x-0 bottom-0 z-40 flex border-t border-white/10 bg-[#0d0d18]/95 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl sm:hidden">{tabs(true)}</nav></>;
+  return <><nav className="fixed inset-x-0 top-0 z-40 border-b border-white/[.06] bg-[#080812]/75 backdrop-blur-xl"><div className="mx-auto grid h-16 max-w-[1500px] grid-cols-[1fr_auto] items-center px-5 sm:h-18 sm:grid-cols-[1fr_auto_1fr] sm:px-8 lg:px-12"><button type="button" onClick={() => onNavigate("similar")} className="justify-self-start text-xl font-black tracking-[-.09em] text-[#b3a6ff] sm:text-2xl">CINEMATCH</button><div className="hidden items-center gap-2 sm:flex">{tabs()}</div><button type="button" onClick={onProfileClick} className="flex max-w-36 items-center gap-2 justify-self-end rounded-full border border-white/12 bg-white/[.06] px-2.5 py-1.5 text-[11px] text-white/65 transition hover:border-white/25 hover:text-white sm:max-w-48 sm:text-xs"><span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#7161bd] text-[10px] font-bold text-white">{profileName?.charAt(0).toUpperCase() || "?"}</span><span className="truncate">{profileName || "Crear perfil"}</span><span className="tabular-nums text-white/35">· {ratedCount}</span></button></div></nav><nav aria-label="Navegación principal" className="fixed inset-x-0 bottom-0 z-40 flex border-t border-white/10 bg-[#0d0d18]/95 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl sm:hidden">{tabs(true)}</nav></>;
+}
+
+function SimilarMoviesView({ query, onQueryChange, movies, seed, results, catalog, loading, error, onSelect, onOpen }: { query: string; onQueryChange: (value: string) => void; movies: SimilarMovie[]; seed: SimilarMovie | null; results: Recommendation[]; catalog: Record<number, CatalogMovie>; loading: boolean; error: string; onSelect: (movie: SimilarMovie) => void; onOpen: (movie: Recommendation) => void }) {
+  const matches = useMemo(() => {
+    const search = query.trim().toLocaleLowerCase("es");
+    if (!search || seed) return [];
+    return movies.filter((movie) => cleanTitle(movie.title).toLocaleLowerCase("es").includes(search)).slice(0, 7);
+  }, [movies, query, seed]);
+  return <section className="relative min-h-screen overflow-hidden px-5 pb-20 pt-28 sm:px-8 lg:px-12"><div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_78%_15%,rgba(116,88,215,.26),transparent_28%),radial-gradient(circle_at_15%_70%,rgba(232,199,122,.1),transparent_25%)]" /><div className="relative mx-auto max-w-6xl"><div className="max-w-3xl"><p className="eyebrow">Proyecto de aplicación · Ítem–ítem</p><h1 className="mt-4 text-5xl font-semibold leading-[.9] tracking-[-.065em] sm:text-7xl">Parte de una película.<br /><span className="font-serif font-normal italic text-[#e8c77a]">Encuentra las siguientes.</span></h1><p className="mt-6 max-w-2xl text-base leading-7 text-white/62 sm:text-lg">Aquí podemos buscar una película directamente. CineMatch compara su patrón de valoraciones con el resto de MovieLens y devuelve las que más se le parecen.</p></div><div className="relative mt-10 max-w-2xl"><label htmlFor="similar-search" className="sr-only">Buscar película</label><div className="flex items-center gap-3 rounded-2xl border border-white/14 bg-[#121221]/90 p-2 shadow-[0_22px_80px_rgba(0,0,0,.35)] backdrop-blur"><input id="similar-search" value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="Prueba con Toy Story, Star Wars…" className="min-w-0 flex-1 bg-transparent px-3 py-3 text-base text-white outline-none placeholder:text-white/30" /><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#8f7de8]/15 text-[#c8beff]"><Icon name="spark" className="h-5 w-5" /></span></div>{matches.length > 0 && <div className="absolute inset-x-0 z-20 mt-2 overflow-hidden rounded-2xl border border-white/12 bg-[#151522] p-1.5 shadow-[0_20px_60px_rgba(0,0,0,.5)]">{matches.map((movie) => <button key={movie.id} type="button" onClick={() => onSelect(movie)} className="flex w-full items-center justify-between gap-4 rounded-xl px-4 py-3 text-left transition hover:bg-white/[.06]"><span><span className="block text-sm font-semibold">{cleanTitle(movie.title)}</span><span className="mt-1 block text-xs text-white/40">★ {movie.rating} · {movie.count} valoraciones</span></span><Icon name="arrow" className="h-4 w-4 shrink-0 text-[#c8beff]" /></button>)}</div>}</div>{error && <p role="alert" className="mt-4 text-sm text-rose-300">{error}</p>}{loading && <div className="mt-10 grid min-h-48 place-items-center rounded-2xl border border-white/10 bg-white/[.025] text-sm text-white/55">Comparando patrones de valoración…</div>}{seed && !loading && results.length > 0 && <div className="mt-14"><div className="flex flex-wrap items-end justify-between gap-4 border-b border-white/8 pb-6"><div><p className="eyebrow">Película de partida</p><h2 className="mt-2 text-3xl font-semibold tracking-[-.04em]">{cleanTitle(seed.title)}</h2><p className="mt-2 text-sm text-white/48">Las siguientes películas han recibido valoraciones parecidas por parte de la comunidad.</p></div><button type="button" onClick={() => { onQueryChange(""); }} className="secondary-action px-4">Buscar otra</button></div><div className="mt-10"><RecommendationRow title="Películas con un patrón parecido" subtitle="Ordenadas mediante similitud del coseno entre sus vectores de valoraciones" films={results} catalog={catalog} loading={false} onOpen={onOpen} /></div><div className="mt-10 rounded-2xl border border-[#a99bff]/16 bg-[#7161bd]/[.08] p-5 sm:p-6"><p className="eyebrow">Qué estamos comparando</p><p className="mt-3 max-w-3xl text-sm leading-6 text-white/55">No utilizamos géneros ni sinopsis. Dos películas quedan cerca cuando las personas que han visto ambas tienden a puntuarlas de una forma parecida. Por eso este resultado es distinto de una búsqueda por temática.</p></div></div>}{!seed && !loading && <div className="mt-14 grid gap-4 sm:grid-cols-3"><article className="rounded-2xl border border-white/10 bg-white/[.025] p-5"><p className="text-xs font-semibold uppercase tracking-[.14em] text-[#e8c77a]">01</p><h2 className="mt-3 text-lg font-semibold">Elige una película</h2><p className="mt-2 text-sm leading-6 text-white/45">Escribe un título y selecciónalo en la lista.</p></article><article className="rounded-2xl border border-white/10 bg-white/[.025] p-5"><p className="text-xs font-semibold uppercase tracking-[.14em] text-[#e8c77a]">02</p><h2 className="mt-3 text-lg font-semibold">Comparamos sus notas</h2><p className="mt-2 text-sm leading-6 text-white/45">Tomamos el vector de valoraciones de esa película.</p></article><article className="rounded-2xl border border-white/10 bg-white/[.025] p-5"><p className="text-xs font-semibold uppercase tracking-[.14em] text-[#e8c77a]">03</p><h2 className="mt-3 text-lg font-semibold">Vemos las más cercanas</h2><p className="mt-2 text-sm leading-6 text-white/45">La similitud del coseno ordena los resultados.</p></article></div>}</div></section>;
 }
 
 function ProfileDialog({ profiles, activeProfile, hasLegacyRatings, onSelect, onCreate, onDelete, onClose }: { profiles: LocalProfile[]; activeProfile: LocalProfile | null; hasLegacyRatings: boolean; onSelect: (profile: LocalProfile) => void; onCreate: (name: string) => void; onDelete: (profile: LocalProfile) => void; onClose?: () => void }) {
