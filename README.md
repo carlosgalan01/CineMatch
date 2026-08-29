@@ -8,13 +8,16 @@ CineMatch es mi caso práctico de sistemas de recomendación de películas. La p
 
 Como ampliación he desarrollado una web para enseñar estos métodos de una forma más visual. La aplicación permite crear perfiles locales, valorar películas y obtener un ranking que combina popularidad, películas similares y usuarios con gustos parecidos. Los perfiles se guardan únicamente en el navegador y no se sincronizan entre dispositivos.
 
+La versión actual añade también un modo independiente de películas similares. Podemos buscar un título sin crear un perfil y obtener las películas con el patrón de valoraciones más cercano, calculado mediante similitud del coseno. Esta parte sirve como demostración interactiva del Proyecto de Aplicación.
+
 ## Enlaces de la entrega
 
 - [Informe en PDF](notebooks/Informe_Caso_Practico_RS_Carlos_Galan.pdf)
-- [Notebook en Google Colab](https://colab.research.google.com/github/carlosgalan01/CineMatch/blob/main/notebooks/Caso_Practico_RS_Carlos_Galan.ipynb)
+- [Notebook del Caso Práctico 1](https://colab.research.google.com/github/carlosgalan01/CineMatch/blob/main/notebooks/Caso_Practico_RS_Carlos_Galan.ipynb)
+- [Notebook del Proyecto de Aplicación](https://colab.research.google.com/github/carlosgalan01/CineMatch/blob/main/notebooks/Proyecto_Aplicacion_RS_Carlos_Galan.ipynb)
 - [Probar CineMatch](https://cine-match-primera-version-2026-08.vercel.app/)
 
-El notebook estudia los tres métodos por separado, tal como pide el enunciado. La web utiliza las mismas ideas, pero las combina mediante pesos dinámicos para que la recomendación vaya cambiando a medida que añadimos valoraciones.
+El notebook del primer caso estudia los tres métodos por separado. La web mantiene ese motor combinado y añade una segunda forma de explorar el catálogo: partir de una película concreta y buscar sus vecinas mediante filtrado colaborativo ítem–ítem.
 
 ## Ejecutar la web en local (opcional)
 
